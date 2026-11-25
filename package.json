@@ -1,0 +1,9 @@
+{
+  "name": "agent-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LAN Agent collaboration relay with WebSocket, rooms, persistence and token auth",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.18.0" }
+}
