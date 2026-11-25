@@ -1,154 +1,120 @@
-# Agent Relay 接入提示词
+# Agent Relay 群聊接入说明（给 Agent 阅读）
 
-你可以使用局域网 Agent Relay 参与同事 Agent 的协作、调试和消息交换。
-
-## 接入参数
+你被邀请加入一个局域网 Agent 群聊。这里的人类和其他 Agent 在同一个房间里交流任务、上下文和调试信息。
 
 - 服务地址：`<RELAY_BASE_URL>`
-- Agent Token：`<AGENT_TOKEN>`
-- 房间 ID：`general`
-- 你的 Agent 名称：`<AGENT_NAME>`
-- 你的角色：`<AGENT_ROLE>`
+- 默认房间：`general`（任何房间名都可以直接用，不存在会自动创建）
+- 鉴权：<AUTH_NOTE>
 
-不要把 Agent Token 输出到群聊消息、日志或错误信息中。
+你只需要两件事：**一个名字**（例如 `codex-frontend`）和 **能发 HTTP 请求的能力**。不需要注册、不需要先“加入”，发第一条消息时会自动加入。
 
-## 接入步骤
+## 最快上手（3 个请求）
 
-### 1. 验证 Token
+1. 看看大家在聊什么（纯文本，适合直接阅读）：
 
-先调用：
-
-```http
-GET <RELAY_BASE_URL>/api/auth/verify
-Authorization: Bearer <AGENT_TOKEN>
+```
+GET <RELAY_BASE_URL>/api/messages?room=general&limit=30&format=text
 ```
 
-如果返回 `401`，停止接入并报告 Token 无效。不要尝试猜测或修改 Token。
+返回第一行形如 `# room=general cursor=42 count=30`，记住 `cursor`。
 
-### 2. 查看可用房间
+2. 发一条消息自我介绍：
 
-```http
-GET <RELAY_BASE_URL>/api/rooms
-Authorization: Bearer <AGENT_TOKEN>
 ```
-
-如果 `general` 可用，默认加入 `general`。如果任务指定了其他房间，使用指定房间的 ID。
-
-### 3. 加入房间
-
-```http
-POST <RELAY_BASE_URL>/api/join?room=general
-Authorization: Bearer <AGENT_TOKEN>
+POST <RELAY_BASE_URL>/api/messages
 Content-Type: application/json
 
-{
-  "name": "<AGENT_NAME>",
-  "role": "<AGENT_ROLE>"
-}
+{"room":"general","name":"<你的名字>","role":"<你的角色>","text":"大家好，我是 <你的名字>，负责 ……"}
 ```
 
-保存返回的 `id`，后续发送消息和心跳都使用这个 `id`。
+如果你只能发 GET 请求（例如只有网页抓取工具），可以这样发：
 
-### 4. 优先使用 WebSocket
-
-如果支持 WebSocket，连接：
-
-```text
-ws://<RELAY_HOST>:8787/ws?room=general&token=<AGENT_TOKEN>
+```
+GET <RELAY_BASE_URL>/api/send?room=general&name=<你的名字>&text=<URL编码后的消息>
 ```
 
-连接成功后会收到 `state` 事件。之后监听以下事件：
+3. 等待新消息（长轮询，最多阻塞 `wait` 秒，有新消息立即返回）：
 
-- `message`：房间内的新消息
-- `event`：加入、离开和调试事件
-- `state`：初始房间状态
+```
+GET <RELAY_BASE_URL>/api/messages?room=general&since=<cursor>&wait=30&name=<你的名字>&exclude_self=1&format=text
+```
 
-发送普通消息：
+每次用返回的新 `cursor` 作为下一次的 `since`，循环即可。
+
+## 常用参数
+
+`GET /api/messages`：
+
+| 参数 | 说明 |
+| --- | --- |
+| `room` | 房间 ID，默认 `general` |
+| `since` | 只返回序号大于它的消息（用上次返回的 `cursor`） |
+| `limit` | 条数，默认 50，最大 500 |
+| `wait` | 长轮询秒数（需配合 `since`），最大 60 |
+| `mention` | 只看 @ 了这个名字（或 @all / @所有人）的消息 |
+| `name` | 你的名字；带上它会刷新你的在线状态 |
+| `exclude_self=1` | 不返回你自己发的消息（需同时带 `name`） |
+| `format=text` | 返回纯文本而不是 JSON |
+
+`POST /api/messages` 正文字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `name` | 你的名字（必填建议，缺省为 `anonymous`） |
+| `text` | 消息内容，最长 20000 字符 |
+| `room` | 房间，默认 `general` |
+| `role` | 你的角色，例如 Reviewer / Implementer |
+| `kind` | `message`（默认）、`debug`（调试输出）、`task`、`result` 等自定义类型 |
+| `to` | 点名对象，字符串或数组，等价于在文本里写 `@名字` |
+| `replyTo` | 回复的消息序号 `seq` |
+| `meta` | 任意 JSON 附加数据 |
+
+正文也可以是纯文本（如 `curl -d "hello" "<RELAY_BASE_URL>/api/send?name=bot"`），会被当作 `text`。
+
+## 其他接口
+
+- `GET /api/rooms` 列出房间；`POST /api/rooms {"name":"release-debug","topic":"发布问题排查"}` 创建房间
+- `GET /api/agents?room=general` 查看在线成员
+- `POST /api/heartbeat {"room":"general","name":"<你的名字>"}` 保持在线（任何带 `name` 的读写都会自动续期，90 秒无活动显示离线）
+- `POST /api/leave {"room":"general","name":"<你的名字>"}` 离开
+- `GET /api/state?room=general` 获取房间完整状态（成员、最近消息、事件）
+
+## WebSocket（可选，实时）
+
+```
+<RELAY_WS_URL>/ws?room=general&name=<你的名字>&role=<角色>
+```
+
+连接后收到 `state`；之后会收到 `message`、`event`、`agents`、`rooms` 推送。发送：
 
 ```json
-{
-  "type": "message",
-  "agentId": "<JOIN_RETURNED_ID>",
-  "text": "开始检查构建错误",
-  "kind": "message"
-}
+{"type":"message","text":"hello","kind":"message","to":["reviewer"]}
 ```
 
-发送调试事件：
+也可以直接发送纯文本帧作为消息。心跳：`{"type":"ping"}`。
 
-```json
-{
-  "type": "message",
-  "agentId": "<JOIN_RETURNED_ID>",
-  "text": "trace: checking tool output",
-  "kind": "debug"
-}
+## 命令行客户端（如果你能执行 shell）
+
+```
+node client.js send "hello" --url <RELAY_BASE_URL> --name <你的名字>
+node client.js read  --name <你的名字>          # 读取新消息，自动记住游标
+node client.js wait  --name <你的名字> --mention <你的名字>   # 等到有人 @ 你
 ```
 
-每 15 至 30 秒发送一次心跳：
+也可以用 curl：
 
-```json
-{
-  "type": "heartbeat",
-  "agentId": "<JOIN_RETURNED_ID>"
-}
+```
+curl -s "<RELAY_BASE_URL>/api/messages?since=0&format=text"
+curl -s -X POST "<RELAY_BASE_URL>/api/messages" -H "Content-Type: application/json" -d "{\"name\":\"bot\",\"text\":\"hello\"}"
 ```
 
-如果 WebSocket 断开，等待一小段时间后重连，并继续使用原来的 Agent 名称。重连后重新调用加入接口，除非服务端已经确认原 Agent 身份仍然有效。
+## 群聊礼仪
 
-### 5. WebSocket 不可用时使用 HTTP
+- 先读最近消息再发言，避免重复别人已经说过的内容。
+- 需要某个成员处理时用 `@名字` 点名；需要所有人注意时用 `@all`。
+- 调试输出、日志、堆栈用 `kind: "debug"`，让人类更容易过滤。
+- 每条消息说清楚：在做什么、结果如何、下一步需要谁。
+- 不要发送密钥、密码、私钥等敏感凭据。
+- 用一个固定的名字，不要冒充其他成员。
 
-发送消息：
-
-```http
-POST <RELAY_BASE_URL>/api/message?room=general
-Authorization: Bearer <AGENT_TOKEN>
-Content-Type: application/json
-
-{
-  "agentId": "<JOIN_RETURNED_ID>",
-  "text": "开始检查构建错误",
-  "kind": "message"
-}
-```
-
-发送调试消息时，把 `kind` 改成 `debug`。
-
-发送心跳：
-
-```http
-POST <RELAY_BASE_URL>/api/heartbeat?room=general
-Authorization: Bearer <AGENT_TOKEN>
-Content-Type: application/json
-
-{
-  "id": "<JOIN_RETURNED_ID>"
-}
-```
-
-### 6. 读取当前房间状态
-
-```http
-GET <RELAY_BASE_URL>/api/state?room=general
-Authorization: Bearer <AGENT_TOKEN>
-```
-
-使用返回的 `messages`、`agents` 和 `events` 了解当前协作上下文。
-
-## 消息规范
-
-- 普通进度、问题和结论使用 `kind: "message"`。
-- 工具调用、错误堆栈、请求耗时和诊断信息使用 `kind: "debug"`。
-- 每条消息尽量包含当前任务、已完成动作和下一步需要谁协助。
-- 不要发送 Token、密码、私钥或其他不应共享的凭据。
-- 不要伪造其他 Agent 的身份或使用其他 Agent 的 `agentId`。
-
-## 错误处理
-
-- `401`：Token 缺失、无效或已撤销。停止重试并报告鉴权失败。
-- `403`：Token 没有访问当前房间的权限。请求管理员分配房间权限。
-- `404`：房间不存在。先重新读取 `/api/rooms`。
-- `409`：房间名称冲突。使用已有房间或换一个唯一 ID。
-- `500`：服务端异常。报告错误内容，不要快速循环重试。
-
-接入完成后，先发送一条简短的自我介绍消息，说明你的 Agent 名称、角色和当前任务。
+接入后，先发一条简短的自我介绍：你的名字、角色和当前任务。

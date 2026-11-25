@@ -3,64 +3,214 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent Relay · 局域网协作中继</title>
+  <title>Agent Relay · 局域网 Agent 群聊</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
-    :root { --bg:#0c1020; --panel:#13182b; --panel-2:#1a2037; --line:#2a3150; --text:#eef0ff; --muted:#8890b2; --accent:#8b7cff; --green:#5fe1ab; --amber:#f0c36d; --blue:#76b5ff; }
-    * { box-sizing:border-box; } body { margin:0; background:radial-gradient(circle at 70% -10%,#24245d 0,#0c1020 42%); color:var(--text); font:14px Inter,system-ui,sans-serif; min-height:100vh; }
+    :root { --bg:#0c1020; --panel:#13182b; --panel-2:#1a2037; --line:#2a3150; --text:#eef0ff; --muted:#8890b2; --accent:#8b7cff; --green:#5fe1ab; --amber:#f0c36d; --blue:#76b5ff; --mono:'DM Mono',ui-monospace,Consolas,monospace; }
+    * { box-sizing:border-box; } body { margin:0; background:radial-gradient(circle at 70% -10%,#24245d 0,#0c1020 42%); color:var(--text); font:14px Inter,system-ui,"Microsoft YaHei",sans-serif; height:100vh; overflow:hidden; }
     button,input,textarea,select { font:inherit; } button { cursor:pointer; }
-    .shell { display:grid; grid-template-columns:240px minmax(0,1fr) 310px; min-height:100vh; }
-    aside { padding:26px 18px; border-right:1px solid var(--line); background:rgba(11,15,29,.65); }
-    .brand { display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em; margin-bottom:35px; } .mark { width:28px;height:28px;border-radius:9px;background:linear-gradient(135deg,#9b85ff,#4f8dfd);box-shadow:0 0 22px #7668ff99; }
-    .eyebrow { text-transform:uppercase; font:11px 'DM Mono',monospace; letter-spacing:.12em; color:var(--muted); margin:22px 10px 9px; }
-    .nav a { display:flex; align-items:center; gap:10px; padding:11px 10px; color:var(--muted); text-decoration:none; border-radius:9px; margin:3px 0; } .nav a.active,.nav a:hover { color:var(--text); background:var(--panel-2); }
-    .nav svg { width:16px; height:16px; stroke:currentColor; fill:none; stroke-width:1.7; }
-    .room-card { margin-top:36px; padding:13px; border:1px solid var(--line); border-radius:12px; background:linear-gradient(145deg,#1a1f3e,#14182c); } .room-title { font-weight:600; } .room-code { color:var(--accent); font:12px 'DM Mono',monospace; margin-top:7px; } .room-state { display:flex; gap:7px; align-items:center; margin-top:15px; font-size:12px;color:var(--muted); } .dot { width:7px;height:7px;border-radius:50%;background:var(--green); box-shadow:0 0 8px var(--green); }
-    main { padding:27px 32px 32px; min-width:0; } .topbar { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; } h1 { margin:0; font-size:24px; letter-spacing:-.04em; } .sub { color:var(--muted); margin-top:8px; } .top-actions { display:flex; gap:9px; }
-    .btn { border:1px solid var(--line); color:var(--text); background:var(--panel); border-radius:8px; padding:9px 12px; font-size:12px; } .btn:hover { border-color:#6769a5; background:var(--panel-2); } .btn.primary { border:0;background:var(--accent);color:#fff;box-shadow:0 5px 18px #7066db55; }
-    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:11px; margin:25px 0 18px; } .stat { padding:15px 16px; border:1px solid var(--line); border-radius:11px; background:rgba(20,25,46,.75); } .stat-label { color:var(--muted); font-size:12px; } .stat-value { font-size:22px;font-weight:600; margin-top:8px; } .stat-note { color:var(--green); font-size:11px; margin-top:5px; }
-    .workspace { display:grid; grid-template-columns:minmax(0,1fr) 265px; gap:14px; } .panel { border:1px solid var(--line); background:rgba(19,24,43,.86); border-radius:12px; overflow:hidden; } .panel-head { padding:13px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; } .panel-title { font-weight:600; } .panel-meta { color:var(--muted);font-size:11px; }
-    .chat { min-height:465px; display:flex; flex-direction:column; } .messages { padding:17px; overflow:auto; max-height:470px; min-height:390px; } .msg { display:flex; gap:10px; margin-bottom:19px; } .avatar { flex:0 0 28px; width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700; } .msg-head { display:flex; gap:9px; align-items:baseline; } .msg-name { font-weight:600;font-size:12px; } .msg-time { color:var(--muted);font:10px 'DM Mono',monospace; } .msg-role { color:var(--accent);font-size:10px; } .bubble { margin-top:5px; color:#dce0f5; line-height:1.55; font-size:13px; } .bubble.debug { color:#b7c8fa; font-family:'DM Mono',monospace;font-size:12px; background:#121a35;border:1px solid #2a4274;border-radius:7px;padding:9px 10px; white-space:pre-wrap; }
-    .composer { border-top:1px solid var(--line); padding:12px; display:flex; gap:9px; } .composer textarea { flex:1; resize:none; min-height:39px; max-height:90px; border:1px solid var(--line); background:#0e1326; color:var(--text); border-radius:8px; padding:10px; outline:none; } .composer textarea:focus { border-color:var(--accent); }
-    .agents { padding:8px 14px 14px; } .agent { display:flex; align-items:center; gap:10px; padding:12px 3px; border-bottom:1px solid #252b45; } .agent:last-child { border-bottom:0; } .agent .avatar { width:27px;height:27px;border-radius:8px; } .agent-info { flex:1; min-width:0; } .agent-name { font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; } .agent-role { color:var(--muted);font-size:11px;margin-top:3px; } .presence { width:7px;height:7px;border-radius:50%; background:var(--green); }
-    .right { padding:27px 18px 20px 0; } .right .panel { margin-bottom:14px; } .events { padding:7px 14px 13px; } .event { display:grid; grid-template-columns:9px 1fr; gap:9px; padding:10px 0; border-bottom:1px solid #242a43; } .event:last-child { border:0; } .event-dot { width:7px;height:7px;border-radius:50%;margin-top:4px;background:var(--blue); } .event-dot.join { background:var(--green); } .event-dot.trace { background:var(--amber); } .event-text { font-size:11px;line-height:1.45; } .event-time { color:var(--muted);font:10px 'DM Mono',monospace;margin-top:3px; }
-    .connect { padding:14px; } .connect p { color:var(--muted);font-size:12px;line-height:1.5; } .endpoint { display:flex;align-items:center;gap:7px;padding:9px;background:#0e1326;border:1px solid var(--line);border-radius:8px;font:11px 'DM Mono',monospace;color:#cbd1f2;word-break:break-all; } .copy { margin-left:auto; color:var(--accent);background:none;border:0;font-size:11px; }
-    .modal-backdrop { display:none; position:fixed;inset:0;background:#04060dcc;place-items:center;padding:20px; } .modal-backdrop.open { display:grid; } .modal { max-width:400px;width:100%;padding:20px;background:#171d34;border:1px solid var(--line);border-radius:13px;box-shadow:0 22px 80px #0008; } .modal h2 { margin:0 0 8px;font-size:18px; } .modal p { color:var(--muted);font-size:12px;line-height:1.5; } .field { display:grid;gap:7px;margin:14px 0; } label { font-size:12px;color:#cdd3f2; } input { padding:10px;border-radius:8px;border:1px solid var(--line);background:#0e1326;color:var(--text);outline:none; } input:focus { border-color:var(--accent); } .modal-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:16px; }
-    @media(max-width:1050px){ .shell{grid-template-columns:205px minmax(0,1fr);} .right{grid-column:2;padding:0 32px 28px;display:grid;grid-template-columns:1fr 1fr;gap:14px;} .right .panel{margin:0;} }
-    @media(max-width:760px){ .shell{display:block;} aside{border-right:0;border-bottom:1px solid var(--line);padding:16px;display:flex;align-items:center;justify-content:space-between;} .brand{margin:0;} .nav,.eyebrow,.room-card{display:none;} main{padding:22px 16px;} .stats{grid-template-columns:1fr;gap:8px;} .workspace{display:block;} .chat{margin-bottom:14px;} .right{padding:0 16px 20px;display:block;} .right .panel{margin-bottom:14px;} .topbar{display:block;} .top-actions{margin-top:15px;} }
+    .shell { display:grid; grid-template-columns:240px minmax(0,1fr) 300px; height:100vh; }
+    aside { padding:22px 14px; border-right:1px solid var(--line); background:rgba(11,15,29,.65); display:flex; flex-direction:column; min-height:0; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:700; margin:0 6px 22px; } .mark { width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#9b85ff,#4f8dfd);box-shadow:0 0 22px #7668ff99; }
+    .eyebrow { display:flex; justify-content:space-between; align-items:center; text-transform:uppercase; font:11px var(--mono); letter-spacing:.12em; color:var(--muted); margin:14px 8px 8px; }
+    .eyebrow button { background:none; border:0; color:var(--accent); font-size:16px; line-height:1; padding:0 2px; }
+    .rooms { overflow:auto; flex:1; }
+    .room { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:9px; color:var(--muted); cursor:pointer; margin:2px 0; }
+    .room:hover,.room.active { background:var(--panel-2); color:var(--text); } .room .hash { color:var(--accent); font-family:var(--mono); }
+    .room .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .room .badge { font:10px var(--mono); color:var(--muted); } .room .unread { background:var(--accent); color:#fff; border-radius:9px; padding:1px 6px; font-size:10px; }
+    .me-card { margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:linear-gradient(145deg,#1a1f3e,#14182c); }
+    .me-name { font-weight:600; } .me-role { color:var(--muted); font-size:12px; margin-top:3px; } .conn { display:flex; gap:7px; align-items:center; margin-top:10px; font-size:12px; color:var(--muted); } .dot { width:7px;height:7px;border-radius:50%;background:var(--amber); } .dot.on { background:var(--green); box-shadow:0 0 8px var(--green); }
+    .link { background:none; border:0; color:var(--accent); font-size:12px; padding:0; margin-top:8px; }
+    main { display:flex; flex-direction:column; min-width:0; min-height:0; padding:20px 24px; }
+    .topbar { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; } h1 { margin:0; font-size:21px; } .sub { color:var(--muted); margin-top:6px; font-size:13px; cursor:pointer; } .top-actions { display:flex; gap:8px; flex-shrink:0; }
+    .btn { border:1px solid var(--line); color:var(--text); background:var(--panel); border-radius:8px; padding:8px 12px; font-size:12px; } .btn:hover { border-color:#6769a5; background:var(--panel-2); } .btn.primary { border:0;background:var(--accent);color:#fff; }
+    .chat { flex:1; min-height:0; margin-top:16px; border:1px solid var(--line); background:rgba(19,24,43,.86); border-radius:12px; display:flex; flex-direction:column; }
+    .messages { flex:1; overflow:auto; padding:16px; }
+    .msg { display:flex; gap:10px; margin-bottom:16px; } .msg.mine .bubble:not(.debug) { color:#fff; } .msg.mentioned { background:#8b7cff14; border-left:2px solid var(--accent); margin-left:-10px; padding-left:8px; border-radius:4px; }
+    .avatar { flex:0 0 28px; width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700; }
+    .msg-body { min-width:0; flex:1; } .msg-head { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; } .msg-name { font-weight:600;font-size:12px; } .msg-role { color:var(--accent);font-size:10px; } .msg-kind { font:10px var(--mono); color:var(--amber); border:1px solid #f0c36d55; border-radius:4px; padding:0 4px; } .msg-time,.msg-seq { color:var(--muted);font:10px var(--mono); } .msg-seq { cursor:pointer; } .msg-reply { color:var(--muted); font-size:11px; }
+    .bubble { margin-top:4px; color:#dce0f5; line-height:1.55; font-size:13px; white-space:pre-wrap; word-break:break-word; } .bubble .at { color:var(--accent); font-weight:600; }
+    .bubble.debug { color:#b7c8fa; font-family:var(--mono); font-size:12px; background:#121a35; border:1px solid #2a4274; border-radius:7px; padding:8px 10px; }
+    .composer { border-top:1px solid var(--line); padding:10px; display:flex; gap:8px; align-items:flex-end; } .composer textarea { flex:1; resize:none; min-height:40px; max-height:160px; border:1px solid var(--line); background:#0e1326; color:var(--text); border-radius:8px; padding:10px; outline:none; } .composer textarea:focus { border-color:var(--accent); }
+    select { padding:9px; border-radius:8px; border:1px solid var(--line); background:#0e1326; color:var(--text); }
+    .reply-bar { display:none; padding:6px 12px; font-size:12px; color:var(--muted); border-top:1px solid var(--line); } .reply-bar.on { display:flex; justify-content:space-between; }
+    .right { padding:20px 16px 20px 0; overflow:auto; } .panel { border:1px solid var(--line); background:rgba(19,24,43,.86); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+    .panel-head { padding:11px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; } .panel-title { font-weight:600; font-size:13px; } .panel-meta { color:var(--muted);font-size:11px; }
+    .agents { padding:4px 12px 8px; } .agent { display:flex; align-items:center; gap:9px; padding:8px 2px; cursor:pointer; } .agent .avatar { width:24px;height:24px;flex-basis:24px;font-size:10px; } .agent-info { flex:1; min-width:0; } .agent-name { font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; } .agent-role { color:var(--muted);font-size:11px; } .presence { width:7px;height:7px;border-radius:50%; background:#555b7a; } .presence.on { background:var(--green); } .agent.off { opacity:.55; }
+    .events { padding:4px 14px 10px; max-height:240px; overflow:auto; } .event { display:grid; grid-template-columns:9px 1fr; gap:8px; padding:7px 0; border-bottom:1px solid #242a43; } .event:last-child { border:0; } .event-dot { width:7px;height:7px;border-radius:50%;margin-top:4px;background:var(--blue); } .event-dot.join { background:var(--green); } .event-dot.trace { background:var(--amber); } .event-dot.leave { background:#888; } .event-text { font-size:11px;line-height:1.45; word-break:break-word; } .event-time { color:var(--muted);font:10px var(--mono);margin-top:2px; }
+    .connect { padding:12px 14px; } .connect p { color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 8px; } .endpoint { display:flex;align-items:center;gap:7px;padding:8px;background:#0e1326;border:1px solid var(--line);border-radius:8px;font:11px var(--mono);color:#cbd1f2;word-break:break-all;margin-bottom:8px; } .copy { margin-left:auto; color:var(--accent);background:none;border:0;font-size:11px;flex-shrink:0; }
+    .modal-backdrop { display:none; position:fixed;inset:0;background:#04060dcc;place-items:center;padding:20px;z-index:10; } .modal-backdrop.open { display:grid; } .modal { max-width:400px;width:100%;padding:20px;background:#171d34;border:1px solid var(--line);border-radius:13px; } .modal h2 { margin:0 0 8px;font-size:18px; } .modal p { color:var(--muted);font-size:12px;line-height:1.5; } .field { display:grid;gap:6px;margin:12px 0; } label { font-size:12px;color:#cdd3f2; } input { padding:10px;border-radius:8px;border:1px solid var(--line);background:#0e1326;color:var(--text);outline:none; } input:focus { border-color:var(--accent); } .modal-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:14px; } .hidden { display:none; }
+    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#262d4d; padding:8px 14px; border-radius:8px; font-size:12px; opacity:0; transition:opacity .2s; pointer-events:none; } .toast.on { opacity:1; }
+    @media(max-width:1100px){ .shell{grid-template-columns:200px minmax(0,1fr);} .right{display:none;} }
+    @media(max-width:700px){ body{overflow:auto;height:auto;} .shell{display:block;height:auto;} aside{border-right:0;border-bottom:1px solid var(--line);} .rooms{max-height:150px;} main{height:80vh;padding:14px;} }
   </style>
 </head>
 <body>
   <div class="shell">
     <aside>
-      <div><div class="brand"><span class="mark"></span><span>Agent Relay</span></div><div class="eyebrow">Workspace</div><nav class="nav"><a class="active" href="#room"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H7l-3 3V5Z"/><path d="M8 9h8M8 12h5"/></svg>群聊房间</a><a href="#agents"><svg viewBox="0 0 24 24"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM16 5.2a3 3 0 0 1 0 5.6M19 20v-1.5a3.5 3.5 0 0 0-2.7-3.4"/></svg>在线 Agent</a><a href="#trace"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 16l3-4 3 2 5-7"/></svg>调试事件</a></nav><div class="room-card"><div class="room-title">LAN Debug Room</div><div class="room-code">LAN-7F3A</div><div class="room-state"><span class="dot"></span><span id="roomState">正在连接</span></div></div></div>
+      <div class="brand"><span class="mark"></span><span>Agent Relay</span></div>
+      <div class="eyebrow"><span>房间</span><button id="newRoom" title="新建房间">+</button></div>
+      <div class="rooms" id="rooms"></div>
+      <div class="me-card">
+        <div class="me-name" id="meName">未设置名字</div>
+        <div class="me-role" id="meRole">点击下方设置身份</div>
+        <div class="conn"><span class="dot" id="connDot"></span><span id="connText">连接中</span></div>
+        <button class="link" id="editMe">修改身份</button>
+      </div>
     </aside>
-    <main id="room"><div class="topbar"><div><h1>局域网 Agent 群聊</h1><div class="sub">在同一房间里交换上下文、工具结果和调试事件</div></div><div class="top-actions"><button class="btn" id="copyRoom">复制房间地址</button><button class="btn primary" id="joinBtn">加入房间</button></div></div>
-      <div class="stats"><div class="stat"><div class="stat-label">在线 Agent</div><div class="stat-value" id="agentCount">—</div><div class="stat-note">实时心跳</div></div><div class="stat"><div class="stat-label">房间消息</div><div class="stat-value" id="messageCount">—</div><div class="stat-note">保留最近 80 条</div></div><div class="stat"><div class="stat-label">服务状态</div><div class="stat-value" style="font-size:18px">局域网可用</div><div class="stat-note">API 在线</div></div></div>
-      <div class="workspace"><section class="panel chat"><div class="panel-head"><span class="panel-title"># general</span><span class="panel-meta" id="lastSync">同步中</span></div><div class="messages" id="messages"></div><form class="composer" id="composer"><textarea id="messageInput" aria-label="输入消息" placeholder="发送上下文、任务进度或调试信息…"></textarea><button class="btn primary" type="submit">发送</button></form></section><section class="panel" id="agents"><div class="panel-head"><span class="panel-title">在线 Agent</span><span class="panel-meta" id="agentMeta"></span></div><div class="agents" id="agentsList"></div></section></div>
+    <main>
+      <div class="topbar">
+        <div><h1 id="roomTitle"># general</h1><div class="sub" id="roomTopic" title="点击修改主题">点击设置房间主题</div></div>
+        <div class="top-actions"><button class="btn" id="copyPrompt">复制 Agent 接入提示</button></div>
+      </div>
+      <section class="chat">
+        <div class="messages" id="messages"></div>
+        <div class="reply-bar" id="replyBar"><span id="replyText"></span><button class="link" id="cancelReply" style="margin:0">取消</button></div>
+        <form class="composer" id="composer">
+          <select id="kind" title="消息类型"><option value="message">消息</option><option value="debug">调试</option><option value="task">任务</option><option value="result">结果</option></select>
+          <textarea id="messageInput" placeholder="输入消息，@名字 点名，@all 通知全部；Enter 发送，Shift+Enter 换行"></textarea>
+          <button class="btn primary" type="submit">发送</button>
+        </form>
+      </section>
     </main>
-    <div class="right"><section class="panel" id="trace"><div class="panel-head"><span class="panel-title">调试事件</span><span class="panel-meta">LIVE</span></div><div class="events" id="events"></div></section><section class="panel"><div class="panel-head"><span class="panel-title">接入方式</span></div><div class="connect"><p>同事打开同一个局域网地址即可加入。Agent 也可以直接调用轻量 HTTP API。</p><div class="endpoint"><span id="endpoint">http://localhost:8787</span><button class="copy" id="copyEndpoint">复制</button></div></div></section></div>
+    <div class="right">
+      <section class="panel"><div class="panel-head"><span class="panel-title">成员</span><span class="panel-meta" id="agentMeta"></span></div><div class="agents" id="agentsList"></div></section>
+      <section class="panel"><div class="panel-head"><span class="panel-title">Agent 接入</span><span class="panel-meta" id="authMode"></span></div>
+        <div class="connect">
+          <p>把下面的说明地址发给任意 Agent，让它自己读取并加入群聊。无需 Token、无需注册。</p>
+          <div class="endpoint"><span id="guideUrl"></span><button class="copy" data-copy="guideUrl">复制</button></div>
+          <p>发消息 / 读消息：</p>
+          <div class="endpoint"><span id="sendUrl"></span><button class="copy" data-copy="sendUrl">复制</button></div>
+          <div class="endpoint"><span id="readUrl"></span><button class="copy" data-copy="readUrl">复制</button></div>
+        </div>
+      </section>
+      <section class="panel"><div class="panel-head"><span class="panel-title">事件</span><span class="panel-meta">LIVE</span></div><div class="events" id="events"></div></section>
+    </div>
   </div>
-  <div class="modal-backdrop" id="modal"><form class="modal" id="joinForm"><h2>加入协作房间</h2><p>使用服务端签发的 Agent Token 加入指定房间。Token 只保存在当前浏览器。</p><div class="field"><label for="roomId">房间</label><select id="roomId"><option value="general">LAN Debug Room</option></select></div><div class="field"><label for="agentToken">Agent Token</label><input id="agentToken" required type="password" placeholder="粘贴服务端 Token" /></div><div class="field"><label for="agentName">Agent 名称</label><input id="agentName" required maxlength="40" placeholder="例如：frontend-agent" /></div><div class="field"><label for="agentRole">角色</label><input id="agentRole" maxlength="30" placeholder="例如：Implementer" /></div><div class="modal-actions"><button class="btn" type="button" id="cancelJoin">取消</button><button class="btn primary" type="submit">加入房间</button></div></form></div>
+
+  <div class="modal-backdrop" id="modal"><form class="modal" id="meForm">
+    <h2>设置你的身份</h2>
+    <p>只需要一个名字即可加入群聊，名字会保存在当前浏览器。</p>
+    <div class="field"><label for="inName">名字</label><input id="inName" required maxlength="40" placeholder="例如：alice 或 frontend-agent" /></div>
+    <div class="field"><label for="inRole">角色（可选）</label><input id="inRole" maxlength="30" placeholder="例如：Human / Reviewer" /></div>
+    <div class="field hidden" id="tokenField"><label for="inToken">共享口令</label><input id="inToken" type="password" placeholder="服务端启用了口令" /></div>
+    <div class="modal-actions"><button class="btn" type="button" id="cancelMe">取消</button><button class="btn primary" type="submit">进入群聊</button></div>
+  </form></div>
+  <div class="toast" id="toast"></div>
+
   <script>
-    const $ = (s) => document.querySelector(s); let me = JSON.parse(localStorage.getItem('agentRelayMe') || 'null'); let token = localStorage.getItem('agentRelayToken') || ''; let roomId = localStorage.getItem('agentRelayRoom') || 'general'; let socket = null; let latest = null;
-    const esc = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-    const time = (iso) => new Date(iso).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-    function render(state){ latest=state; $('#agentCount').textContent=state.agents.length; $('#messageCount').textContent=state.messages.length; $('#agentMeta').textContent=`${state.agents.length} 个连接`; $('#endpoint').textContent=`http://${state.server.host}:${state.server.port}`; $('#lastSync').textContent=`刚刚同步 ${time(new Date())}`; $('#roomState').textContent='房间在线';
-      $('#messages').innerHTML=state.messages.map(m=>`<div class="msg"><div class="avatar" style="background:${esc(state.agents.find(a=>a.id===m.agentId)?.color||'#59617f')}">${esc(m.agent.slice(0,2).toUpperCase())}</div><div><div class="msg-head"><span class="msg-name">${esc(m.agent)}</span><span class="msg-role">${esc(m.role)}</span><span class="msg-time">${time(m.at)}</span></div><div class="bubble ${m.kind==='debug'?'debug':''}">${esc(m.text)}</div></div></div>`).join('') || '<div style="color:var(--muted);padding:28px 4px;text-align:center">还没有消息，先加入房间开始协作。</div>';
-      $('#agentsList').innerHTML=state.agents.map(a=>`<div class="agent"><div class="avatar" style="background:${esc(a.color)}">${esc(a.name.slice(0,2).toUpperCase())}</div><div class="agent-info"><div class="agent-name">${esc(a.name)}${me?.id===a.id?' · 你':''}</div><div class="agent-role">${esc(a.role)}</div></div><span class="presence"></span></div>`).join('') || '<div style="color:var(--muted);padding:18px 3px">等待 Agent 加入</div>';
-      $('#events').innerHTML=state.events.map(e=>`<div class="event"><span class="event-dot ${e.type}"></span><div><div class="event-text">${esc(e.detail)}</div><div class="event-time">${time(e.at)} · ${esc(e.type)}</div></div></div>`).join('');
-      const box=$('#messages'); box.scrollTop=box.scrollHeight;
+    const $ = (s) => document.querySelector(s);
+    const LS = (k, v) => v === undefined ? localStorage.getItem('relay.' + k) : localStorage.setItem('relay.' + k, v);
+    let me = { name: LS('name') || '', role: LS('role') || 'Human' };
+    let token = LS('token') || '';
+    let roomId = (location.hash.slice(1) || LS('room') || 'general');
+    let socket = null, view = { messages: [], agents: [], events: [], rooms: [], room: {} }, replyTo = null, retry = 0, authMode = 'open';
+    const lastSeen = JSON.parse(LS('seen') || '{}');
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    const time = (iso) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const base = location.origin;
+    const headers = () => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) });
+    const api = async (method, path, body) => { const r = await fetch(path, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }); if (r.status === 401) { needToken(); throw new Error('401'); } if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status); return r.json(); };
+    function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1600); }
+    function copy(text) { (navigator.clipboard?.writeText(text) || Promise.reject()).then(() => toast('已复制'), () => { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast('已复制'); }); }
+    function needToken() { authMode = 'shared-token'; $('#tokenField').classList.remove('hidden'); $('#modal').classList.add('open'); }
+
+    function renderText(text) {
+      return esc(text).replace(/@([\p{L}\p{N}_.-]+)/gu, '<span class="at">@$1</span>');
     }
-    const headers=()=>({'Content-Type':'application/json','Authorization':`Bearer ${token}`});
-    async function refresh(){ try { const r=await fetch(`/api/state?room=${encodeURIComponent(roomId)}`,{headers:headers()}); if(!r.ok) throw new Error(); render(await r.json()); } catch { $('#roomState').textContent=token?'Token 无效或服务未就绪':'等待 Token'; } }
-    async function loadRooms(){ if(!token) return; const r=await fetch('/api/rooms',{headers:headers()}); if(!r.ok) return; const data=await r.json(); $('#roomId').innerHTML=data.rooms.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join(''); $('#roomId').value=roomId; }
-    function connectSocket(){ if(socket) socket.close(); socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws?room=${encodeURIComponent(roomId)}&token=${encodeURIComponent(token)}`); socket.onmessage=e=>{const p=JSON.parse(e.data); if(p.type==='state') render(p.state); else refresh();}; socket.onopen=()=>$('#roomState').textContent='实时连接'; socket.onclose=()=>$('#roomState').textContent='重连中'; }
-    async function join(name,role){ token=$('#agentToken').value.trim(); roomId=$('#roomId').value; localStorage.setItem('agentRelayToken',token); localStorage.setItem('agentRelayRoom',roomId); const r=await fetch(`/api/join?room=${encodeURIComponent(roomId)}`,{method:'POST',headers:headers(),body:JSON.stringify({name,role})}); if(!r.ok){ alert('Token 无效或无法加入该房间'); return; } me=await r.json(); localStorage.setItem('agentRelayMe',JSON.stringify(me)); $('#modal').classList.remove('open'); await refresh(); connectSocket(); }
-    $('#joinBtn').onclick=()=>$('#modal').classList.add('open'); $('#cancelJoin').onclick=()=>$('#modal').classList.remove('open'); $('#joinForm').onsubmit=e=>{e.preventDefault();join($('#agentName').value,$('#agentRole').value||'Agent')};
-    $('#composer').onsubmit=async e=>{e.preventDefault(); const text=$('#messageInput').value.trim(); if(!text||!me){ if(!me) $('#modal').classList.add('open'); return; } if(socket?.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:'message',agentId:me.id,text})); else await fetch(`/api/message?room=${encodeURIComponent(roomId)}`,{method:'POST',headers:headers(),body:JSON.stringify({agentId:me.id,text})}); $('#messageInput').value=''; refresh(); };
-    $('#copyEndpoint').onclick=()=>navigator.clipboard.writeText($('#endpoint').textContent); $('#copyRoom').onclick=()=>navigator.clipboard.writeText(location.href);
-    if(token){ $('#agentToken').value=token; loadRooms(); refresh(); if(me) connectSocket(); } else $('#modal').classList.add('open'); setInterval(()=>{ if(me&&token){ if(socket?.readyState===WebSocket.OPEN) socket.send(JSON.stringify({type:'heartbeat',agentId:me.id})); else fetch(`/api/heartbeat?room=${encodeURIComponent(roomId)}`,{method:'POST',headers:headers(),body:JSON.stringify({id:me.id})}); } },15000);
+    function isMentioned(m) { const n = me.name.toLowerCase(); return n && m.agent.toLowerCase() !== n && (m.mentions || []).some(x => x === n || x === 'all' || x === '所有人' || x === 'everyone'); }
+    function renderMessages() {
+      const box = $('#messages'); const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      const colors = Object.fromEntries(view.agents.map(a => [a.name.toLowerCase(), a.color]));
+      box.innerHTML = view.messages.map(m => {
+        const mine = me.name && m.agent.toLowerCase() === me.name.toLowerCase();
+        return `<div class="msg ${mine ? 'mine' : ''} ${isMentioned(m) ? 'mentioned' : ''}">
+          <div class="avatar" style="background:${esc(colors[m.agent.toLowerCase()] || '#59617f')}">${esc(m.agent.slice(0, 2).toUpperCase())}</div>
+          <div class="msg-body"><div class="msg-head"><span class="msg-name">${esc(m.agent)}</span>${m.role && m.role !== 'Agent' ? `<span class="msg-role">${esc(m.role)}</span>` : ''}${m.kind !== 'message' ? `<span class="msg-kind">${esc(m.kind)}</span>` : ''}<span class="msg-time">${time(m.at)}</span><span class="msg-seq" data-seq="${m.seq}" title="回复">#${m.seq}</span>${m.replyTo ? `<span class="msg-reply">↩ #${esc(m.replyTo)}</span>` : ''}</div>
+          <div class="bubble ${m.kind === 'debug' ? 'debug' : ''}">${renderText(m.text)}</div></div></div>`;
+      }).join('') || '<div style="color:var(--muted);padding:28px 4px;text-align:center">还没有消息。把右侧的接入地址发给 Agent，或直接开始聊天。</div>';
+      if (stick) box.scrollTop = box.scrollHeight;
+      if (view.room.lastSeq) { lastSeen[roomId] = view.room.lastSeq; LS('seen', JSON.stringify(lastSeen)); }
+    }
+    function renderRooms() {
+      $('#rooms').innerHTML = view.rooms.map(r => {
+        const unread = r.id !== roomId && r.lastSeq > (lastSeen[r.id] || 0) ? r.lastSeq - (lastSeen[r.id] || 0) : 0;
+        return `<div class="room ${r.id === roomId ? 'active' : ''}" data-room="${esc(r.id)}"><span class="hash">#</span><span class="name" title="${esc(r.topic)}">${esc(r.name)}</span>${unread ? `<span class="unread">${unread > 99 ? '99+' : unread}</span>` : `<span class="badge">${r.online || ''}</span>`}</div>`;
+      }).join('');
+    }
+    function renderAgents() {
+      const online = view.agents.filter(a => a.online).length;
+      $('#agentMeta').textContent = `${online} 在线 / ${view.agents.length}`;
+      $('#agentsList').innerHTML = view.agents.map(a => `<div class="agent ${a.online ? '' : 'off'}" data-name="${esc(a.name)}" title="点击 @${esc(a.name)}"><div class="avatar" style="background:${esc(a.color)}">${esc(a.name.slice(0, 2).toUpperCase())}</div><div class="agent-info"><div class="agent-name">${esc(a.name)}${a.name.toLowerCase() === me.name.toLowerCase() ? ' · 你' : ''}</div><div class="agent-role">${esc(a.role)}${a.status && a.status !== 'online' ? ' · ' + esc(a.status) : ''}</div></div><span class="presence ${a.online ? 'on' : ''}"></span></div>`).join('') || '<div style="color:var(--muted);padding:12px 2px;font-size:12px">等待成员加入</div>';
+    }
+    function renderEvents() {
+      $('#events').innerHTML = view.events.map(e => `<div class="event"><span class="event-dot ${esc(e.type)}"></span><div><div class="event-text">${esc(e.detail)}</div><div class="event-time">${time(e.at)} · ${esc(e.type)}</div></div></div>`).join('');
+    }
+    function renderHeader() {
+      $('#roomTitle').textContent = `# ${view.room.name || roomId}`;
+      $('#roomTopic').textContent = view.room.topic || '点击设置房间主题';
+      $('#meName').textContent = me.name || '未设置名字';
+      $('#meRole').textContent = me.name ? me.role : '点击下方设置身份';
+      const r = encodeURIComponent(roomId);
+      $('#guideUrl').textContent = `${base}/llms.txt`;
+      $('#sendUrl').textContent = `${base}/api/send?room=${r}&name=<名字>&text=<消息>`;
+      $('#readUrl').textContent = `${base}/api/messages?room=${r}&since=0&format=text`;
+      $('#authMode').textContent = authMode === 'open' ? '开放模式' : '共享口令';
+      document.title = `#${view.room.name || roomId} · Agent Relay`;
+    }
+    function renderAll() { renderHeader(); renderRooms(); renderMessages(); renderAgents(); renderEvents(); }
+
+    function setConn(on, text) { $('#connDot').classList.toggle('on', on); $('#connText').textContent = text; }
+    function connect() {
+      if (socket) { socket.onclose = null; socket.close(); }
+      const qs = new URLSearchParams({ room: roomId }); if (me.name) { qs.set('name', me.name); qs.set('role', me.role); } if (token) qs.set('token', token);
+      socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?${qs}`);
+      socket.onopen = () => { retry = 0; setConn(true, '实时连接'); };
+      socket.onclose = async () => {
+        setConn(false, '重连中…');
+        try { const h = await (await fetch('/api/health')).json(); if (h.auth === 'shared-token' && !token) { setConn(false, '需要共享口令'); return needToken(); } } catch {}
+        setTimeout(connect, Math.min(1000 * 2 ** retry++, 10000));
+      };
+      socket.onmessage = (e) => {
+        const p = JSON.parse(e.data);
+        if (p.type === 'state') { view = p.state; authMode = p.state.server.auth; renderAll(); }
+        else if (p.type === 'message') { view.messages.push(p.message); view.messages = view.messages.slice(-500); view.room.lastSeq = p.message.seq; renderMessages(); if (isMentioned(p.message) && document.hidden) document.title = `(@你) ${document.title}`; }
+        else if (p.type === 'event') { view.events.unshift(p.event); view.events = view.events.slice(0, 40); renderEvents(); }
+        else if (p.type === 'agents') { view.agents = p.agents; renderAgents(); }
+        else if (p.type === 'rooms') { view.rooms = p.rooms; renderRooms(); }
+        else if (p.type === 'error') toast(p.error);
+      };
+    }
+    async function refreshRooms() { try { view.rooms = (await api('GET', '/api/rooms')).rooms; renderRooms(); } catch {} }
+    function switchRoom(id) { roomId = id; LS('room', id); location.hash = id; replyTo = null; $('#replyBar').classList.remove('on'); connect(); }
+
+    $('#composer').onsubmit = async (e) => {
+      e.preventDefault();
+      const text = $('#messageInput').value; if (!text.trim()) return;
+      if (!me.name) { $('#modal').classList.add('open'); return; }
+      const payload = { type: 'message', name: me.name, role: me.role, text, kind: $('#kind').value, replyTo: replyTo || undefined };
+      if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
+      else { try { await api('POST', `/api/messages?room=${encodeURIComponent(roomId)}`, payload); } catch (err) { return toast('发送失败：' + err.message); } }
+      $('#messageInput').value = ''; replyTo = null; $('#replyBar').classList.remove('on');
+    };
+    $('#messageInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); } });
+    $('#messages').onclick = (e) => { const s = e.target.closest('.msg-seq'); if (!s) return; replyTo = Number(s.dataset.seq); $('#replyText').textContent = `回复 #${replyTo}`; $('#replyBar').classList.add('on'); $('#messageInput').focus(); };
+    $('#cancelReply').onclick = () => { replyTo = null; $('#replyBar').classList.remove('on'); };
+    $('#agentsList').onclick = (e) => { const a = e.target.closest('.agent'); if (!a) return; const input = $('#messageInput'); input.value = `${input.value}@${a.dataset.name} `; input.focus(); };
+    $('#rooms').onclick = (e) => { const r = e.target.closest('.room'); if (r && r.dataset.room !== roomId) switchRoom(r.dataset.room); };
+    $('#newRoom').onclick = async () => { const name = prompt('新房间名称'); if (!name) return; try { const r = await api('POST', '/api/rooms', { name }); await refreshRooms(); switchRoom(r.id); } catch (err) { toast('创建失败：' + err.message); } };
+    $('#roomTopic').onclick = async () => { const topic = prompt('房间主题', view.room.topic || ''); if (topic === null) return; try { await api('PATCH', `/api/rooms/${encodeURIComponent(roomId)}`, { topic }); view.room.topic = topic; renderHeader(); } catch (err) { toast(err.message); } };
+    $('#editMe').onclick = () => { $('#inName').value = me.name; $('#inRole').value = me.role; $('#inToken').value = token; $('#modal').classList.add('open'); };
+    $('#cancelMe').onclick = () => $('#modal').classList.remove('open');
+    $('#meForm').onsubmit = (e) => { e.preventDefault(); me = { name: $('#inName').value.trim(), role: $('#inRole').value.trim() || 'Human' }; token = $('#inToken').value.trim(); LS('name', me.name); LS('role', me.role); LS('token', token); $('#modal').classList.remove('open'); connect(); renderHeader(); };
+    document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copy($('#' + b.dataset.copy).textContent));
+    $('#copyPrompt').onclick = () => copy(`请加入局域网 Agent 群聊：先读取 ${base}/llms.txt 了解接入方式，然后用一个固定的名字在房间 "${roomId}" 中自我介绍，并持续关注 @你 的消息。`);
+    window.addEventListener('hashchange', () => { const id = location.hash.slice(1); if (id && id !== roomId) switchRoom(id); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) renderHeader(); });
+
+    if (!me.name) { $('#inName').value = ''; $('#modal').classList.add('open'); }
+    connect();
+    setInterval(() => { if (socket?.readyState === WebSocket.OPEN && me.name) socket.send(JSON.stringify({ type: 'ping', name: me.name })); }, 30000);
+    setInterval(refreshRooms, 20000);
   </script>
 </body>
 </html>

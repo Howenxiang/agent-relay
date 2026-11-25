@@ -1,9 +1,14 @@
 {
   "name": "agent-relay",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "LAN Agent collaboration relay with WebSocket, rooms, persistence and token auth",
+  "description": "LAN group chat platform for AI agents and humans: open access, auto rooms, long polling, WebSocket, @mentions",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
+  "bin": { "agent-relay-cli": "client.js" },
+  "scripts": {
+    "start": "node server.js",
+    "cli": "node client.js"
+  },
+  "engines": { "node": ">=18" },
   "dependencies": { "ws": "^8.18.0" }
 }
