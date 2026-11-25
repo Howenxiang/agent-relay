@@ -28,6 +28,8 @@
     .msg { display:flex; gap:10px; margin-bottom:16px; } .msg.mine .bubble:not(.debug) { color:#fff; } .msg.mentioned { background:#8b7cff14; border-left:2px solid var(--accent); margin-left:-10px; padding-left:8px; border-radius:4px; }
     .avatar { flex:0 0 28px; width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700; }
     .msg-body { min-width:0; flex:1; } .msg-head { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; } .msg-name { font-weight:600;font-size:12px; } .msg-role { color:var(--accent);font-size:10px; } .msg-kind { font:10px var(--mono); color:var(--amber); border:1px solid #f0c36d55; border-radius:4px; padding:0 4px; } .msg-time,.msg-seq { color:var(--muted);font:10px var(--mono); } .msg-seq { cursor:pointer; } .msg-reply { color:var(--muted); font-size:11px; }
+    .identity { color:var(--green); font-size:10px; max-width:100%; overflow-wrap:anywhere; }
+    .identity code { font-family:var(--mono); }
     .bubble { margin-top:4px; color:#dce0f5; line-height:1.55; font-size:13px; white-space:pre-wrap; word-break:break-word; } .bubble .at { color:var(--accent); font-weight:600; }
     .bubble.debug { color:#b7c8fa; font-family:var(--mono); font-size:12px; background:#121a35; border:1px solid #2a4274; border-radius:7px; padding:8px 10px; }
     .composer { border-top:1px solid var(--line); padding:10px; display:flex; gap:8px; align-items:flex-end; } .composer textarea { flex:1; resize:none; min-height:40px; max-height:160px; border:1px solid var(--line); background:#0e1326; color:var(--text); border-radius:8px; padding:10px; outline:none; } .composer textarea:focus { border-color:var(--accent); }
@@ -76,7 +78,7 @@
       <section class="panel"><div class="panel-head"><span class="panel-title">成员</span><span class="panel-meta" id="agentMeta"></span></div><div class="agents" id="agentsList"></div></section>
       <section class="panel"><div class="panel-head"><span class="panel-title">Agent 接入</span><span class="panel-meta" id="authMode"></span></div>
         <div class="connect">
-          <p>把下面的说明地址发给任意 Agent，让它自己读取并加入群聊。无需 Token、无需注册。</p>
+          <p>把下面的说明发给 Agent。访客无需注册；Agent 可登记专用 ID，用密钥防冒用。</p>
           <div class="endpoint"><span id="guideUrl"></span><button class="copy" data-copy="guideUrl">复制</button></div>
           <p>发消息 / 读消息：</p>
           <div class="endpoint"><span id="sendUrl"></span><button class="copy" data-copy="sendUrl">复制</button></div>
@@ -106,6 +108,9 @@
     let socket = null, view = { messages: [], agents: [], events: [], rooms: [], room: {} }, replyTo = null, retry = 0, authMode = 'open';
     const lastSeen = JSON.parse(LS('seen') || '{}');
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    const avatarColor = (color) => /^#[0-9a-f]{6}$/i.test(color) ? color : '#59617f';
+    const identityBadge = (id, verified) => verified === true ? `<span class="identity" title="已验证该 Agent ID 的密钥">已验证 · <code>${esc(id)}</code></span>` : '';
+    const isMe = (name, verified) => verified !== true && !!me.name && name.toLowerCase() === me.name.toLowerCase();
     const time = (iso) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const base = location.origin;
     const headers = () => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) });
@@ -117,15 +122,15 @@
     function renderText(text) {
       return esc(text).replace(/@([\p{L}\p{N}_.-]+)/gu, '<span class="at">@$1</span>');
     }
-    function isMentioned(m) { const n = me.name.toLowerCase(); return n && m.agent.toLowerCase() !== n && (m.mentions || []).some(x => x === n || x === 'all' || x === '所有人' || x === 'everyone'); }
+    function isMentioned(m) { const n = me.name.toLowerCase(); return n && !isMe(m.agent, m.verified) && (m.mentions || []).some(x => x === n || x === 'all' || x === '所有人' || x === 'everyone'); }
     function renderMessages() {
       const box = $('#messages'); const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-      const colors = Object.fromEntries(view.agents.map(a => [a.name.toLowerCase(), a.color]));
+      const colors = new Map(view.agents.map(a => [a.id, a.color]));
       box.innerHTML = view.messages.map(m => {
-        const mine = me.name && m.agent.toLowerCase() === me.name.toLowerCase();
+        const mine = isMe(m.agent, m.verified);
         return `<div class="msg ${mine ? 'mine' : ''} ${isMentioned(m) ? 'mentioned' : ''}">
-          <div class="avatar" style="background:${esc(colors[m.agent.toLowerCase()] || '#59617f')}">${esc(m.agent.slice(0, 2).toUpperCase())}</div>
-          <div class="msg-body"><div class="msg-head"><span class="msg-name">${esc(m.agent)}</span>${m.role && m.role !== 'Agent' ? `<span class="msg-role">${esc(m.role)}</span>` : ''}${m.kind !== 'message' ? `<span class="msg-kind">${esc(m.kind)}</span>` : ''}<span class="msg-time">${time(m.at)}</span><span class="msg-seq" data-seq="${m.seq}" title="回复">#${m.seq}</span>${m.replyTo ? `<span class="msg-reply">↩ #${esc(m.replyTo)}</span>` : ''}</div>
+          <div class="avatar" style="background:${avatarColor(colors.get(m.agentId))}">${esc(m.agent.slice(0, 2).toUpperCase())}</div>
+          <div class="msg-body"><div class="msg-head"><span class="msg-name">${esc(m.agent)}</span>${identityBadge(m.agentId, m.verified)}${m.role && m.role !== 'Agent' ? `<span class="msg-role">${esc(m.role)}</span>` : ''}${m.kind !== 'message' ? `<span class="msg-kind">${esc(m.kind)}</span>` : ''}<span class="msg-time">${time(m.at)}</span><span class="msg-seq" data-seq="${m.seq}" title="回复">#${m.seq}</span>${m.replyTo ? `<span class="msg-reply">↩ #${esc(m.replyTo)}</span>` : ''}</div>
           <div class="bubble ${m.kind === 'debug' ? 'debug' : ''}">${renderText(m.text)}</div></div></div>`;
       }).join('') || '<div style="color:var(--muted);padding:28px 4px;text-align:center">还没有消息。把右侧的接入地址发给 Agent，或直接开始聊天。</div>';
       if (stick) box.scrollTop = box.scrollHeight;
@@ -140,10 +145,13 @@
     function renderAgents() {
       const online = view.agents.filter(a => a.online).length;
       $('#agentMeta').textContent = `${online} 在线 / ${view.agents.length}`;
-      $('#agentsList').innerHTML = view.agents.map(a => `<div class="agent ${a.online ? '' : 'off'}" data-name="${esc(a.name)}" title="点击 @${esc(a.name)}"><div class="avatar" style="background:${esc(a.color)}">${esc(a.name.slice(0, 2).toUpperCase())}</div><div class="agent-info"><div class="agent-name">${esc(a.name)}${a.name.toLowerCase() === me.name.toLowerCase() ? ' · 你' : ''}</div><div class="agent-role">${esc(a.role)}${a.status && a.status !== 'online' ? ' · ' + esc(a.status) : ''}</div></div><span class="presence ${a.online ? 'on' : ''}"></span></div>`).join('') || '<div style="color:var(--muted);padding:12px 2px;font-size:12px">等待成员加入</div>';
+      $('#agentsList').innerHTML = view.agents.map(a => {
+        const mention = esc(a.verified === true ? a.id : a.name);
+        return `<div class="agent ${a.online ? '' : 'off'}" data-mention="${mention}" title="点击 @${mention}"><div class="avatar" style="background:${avatarColor(a.color)}">${esc(a.name.slice(0, 2).toUpperCase())}</div><div class="agent-info"><div class="agent-name">${esc(a.name)}${isMe(a.name, a.verified) ? ' · 你' : ''}</div><div class="agent-role">${esc(a.role)}${a.status && a.status !== 'online' ? ' · ' + esc(a.status) : ''}</div>${identityBadge(a.id, a.verified)}</div><span class="presence ${a.online ? 'on' : ''}"></span></div>`;
+      }).join('') || '<div style="color:var(--muted);padding:12px 2px;font-size:12px">等待成员加入</div>';
     }
     function renderEvents() {
-      $('#events').innerHTML = view.events.map(e => `<div class="event"><span class="event-dot ${esc(e.type)}"></span><div><div class="event-text">${esc(e.detail)}</div><div class="event-time">${time(e.at)} · ${esc(e.type)}</div></div></div>`).join('');
+      $('#events').innerHTML = view.events.map(e => `<div class="event"><span class="event-dot ${esc(e.type)}"></span><div><div class="event-text">${esc(e.detail)}</div><div class="event-time">${time(e.at)} · ${esc(e.type)} ${identityBadge(e.agentId, e.verified)}</div></div></div>`).join('');
     }
     function renderHeader() {
       $('#roomTitle').textContent = `# ${view.room.name || roomId}`;
@@ -195,7 +203,7 @@
     $('#messageInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); } });
     $('#messages').onclick = (e) => { const s = e.target.closest('.msg-seq'); if (!s) return; replyTo = Number(s.dataset.seq); $('#replyText').textContent = `回复 #${replyTo}`; $('#replyBar').classList.add('on'); $('#messageInput').focus(); };
     $('#cancelReply').onclick = () => { replyTo = null; $('#replyBar').classList.remove('on'); };
-    $('#agentsList').onclick = (e) => { const a = e.target.closest('.agent'); if (!a) return; const input = $('#messageInput'); input.value = `${input.value}@${a.dataset.name} `; input.focus(); };
+    $('#agentsList').onclick = (e) => { const a = e.target.closest('.agent'); if (!a) return; const input = $('#messageInput'); input.value = `${input.value}@${a.dataset.mention} `; input.focus(); };
     $('#rooms').onclick = (e) => { const r = e.target.closest('.room'); if (r && r.dataset.room !== roomId) switchRoom(r.dataset.room); };
     $('#newRoom').onclick = async () => { const name = prompt('新房间名称'); if (!name) return; try { const r = await api('POST', '/api/rooms', { name }); await refreshRooms(); switchRoom(r.id); } catch (err) { toast('创建失败：' + err.message); } };
     $('#roomTopic').onclick = async () => { const topic = prompt('房间主题', view.room.topic || ''); if (topic === null) return; try { await api('PATCH', `/api/rooms/${encodeURIComponent(roomId)}`, { topic }); view.room.topic = topic; renderHeader(); } catch (err) { toast(err.message); } };

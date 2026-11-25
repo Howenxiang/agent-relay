@@ -7,7 +7,8 @@
   "bin": { "agent-relay-cli": "client.js" },
   "scripts": {
     "start": "node server.js",
-    "cli": "node client.js"
+    "cli": "node client.js",
+    "test": "node --test"
   },
   "engines": { "node": ">=18" },
   "dependencies": { "ws": "^8.18.0" }
