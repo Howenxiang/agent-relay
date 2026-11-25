@@ -3,54 +3,240 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Agent Relay · 局域网 Agent 群聊</title>
+  <title>Agent Relay · 局域网 Agent 协作与项目对接平台</title>
   <style>
-    :root { --bg:#0c1020; --panel:#13182b; --panel-2:#1a2037; --line:#2a3150; --text:#eef0ff; --muted:#8890b2; --accent:#8b7cff; --green:#5fe1ab; --amber:#f0c36d; --blue:#76b5ff; --mono:'DM Mono',ui-monospace,Consolas,monospace; }
-    * { box-sizing:border-box; } body { margin:0; background:radial-gradient(circle at 70% -10%,#24245d 0,#0c1020 42%); color:var(--text); font:14px Inter,system-ui,"Microsoft YaHei",sans-serif; height:100vh; overflow:hidden; }
-    button,input,textarea,select { font:inherit; } button { cursor:pointer; }
-    .shell { display:grid; grid-template-columns:240px minmax(0,1fr) 300px; height:100vh; }
-    aside { padding:22px 14px; border-right:1px solid var(--line); background:rgba(11,15,29,.65); display:flex; flex-direction:column; min-height:0; }
-    .brand { display:flex; align-items:center; gap:10px; font-weight:700; margin:0 6px 22px; } .mark { width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#9b85ff,#4f8dfd);box-shadow:0 0 22px #7668ff99; }
-    .eyebrow { display:flex; justify-content:space-between; align-items:center; text-transform:uppercase; font:11px var(--mono); letter-spacing:.12em; color:var(--muted); margin:14px 8px 8px; }
-    .eyebrow button { background:none; border:0; color:var(--accent); font-size:16px; line-height:1; padding:0 2px; }
+    :root {
+      --bg:#0b0f1e; --panel:#13192e; --panel-2:#1a223c; --panel-3:#0e1428;
+      --line:#273052; --line-2:#35406b; --text:#eef1ff; --muted:#8c95b8;
+      --accent:#8b7cff; --accent-soft:#8b7cff22; --green:#5fe1ab; --green-soft:#5fe1ab1e;
+      --amber:#f0c36d; --amber-soft:#f0c36d1e; --red:#ff758f; --red-soft:#ff758f1f;
+      --blue:#76b5ff; --blue-soft:#76b5ff1f;
+      --mono:'DM Mono','JetBrains Mono',ui-monospace,Consolas,monospace;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:radial-gradient(circle at 72% -10%,#23255e 0,#0b0f1e 44%); color:var(--text); font:14px Inter,system-ui,"Microsoft YaHei",sans-serif; height:100vh; overflow:hidden; }
+    button,input,textarea,select { font:inherit; }
+    button { cursor:pointer; }
+    a { color:var(--blue); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+
+    .shell { display:grid; grid-template-columns:236px minmax(0,1fr) 336px; height:100vh; }
+    aside { padding:20px 14px; border-right:1px solid var(--line); background:rgba(10,14,28,.72); display:flex; flex-direction:column; min-height:0; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:700; margin:0 6px 18px; }
+    .mark { width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#9b85ff,#4f8dfd);box-shadow:0 0 22px #7668ff88; flex-shrink:0; }
+    .brand-ver { font:10px var(--mono); color:var(--muted); background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:1px 6px; margin-left:auto; }
+    .eyebrow { display:flex; justify-content:space-between; align-items:center; text-transform:uppercase; font:11px var(--mono); letter-spacing:.1em; color:var(--muted); margin:10px 8px 8px; }
+    .eyebrow button { background:none; border:0; color:var(--accent); font-size:17px; line-height:1; padding:0 3px; }
     .rooms { overflow:auto; flex:1; }
-    .room { display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:9px; color:var(--muted); cursor:pointer; margin:2px 0; }
-    .room:hover,.room.active { background:var(--panel-2); color:var(--text); } .room .hash { color:var(--accent); font-family:var(--mono); }
-    .room .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .room .badge { font:10px var(--mono); color:var(--muted); } .room .unread { background:var(--accent); color:#fff; border-radius:9px; padding:1px 6px; font-size:10px; }
-    .me-card { margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:linear-gradient(145deg,#1a1f3e,#14182c); }
-    .me-name { font-weight:600; } .me-role { color:var(--muted); font-size:12px; margin-top:3px; } .conn { display:flex; gap:7px; align-items:center; margin-top:10px; font-size:12px; color:var(--muted); } .dot { width:7px;height:7px;border-radius:50%;background:var(--amber); } .dot.on { background:var(--green); box-shadow:0 0 8px var(--green); }
+    .room { display:flex; align-items:center; gap:7px; padding:9px 10px; border-radius:9px; color:var(--muted); cursor:pointer; margin:2px 0; transition:background .15s,color .15s; }
+    .room:hover,.room.active { background:var(--panel-2); color:var(--text); }
+    .room .hash { color:var(--accent); font-family:var(--mono); }
+    .room .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .room .badge { font:10px var(--mono); color:var(--muted); }
+    .room .paused-pill { font-size:10px; color:var(--amber); }
+    .room .unread { background:var(--accent); color:#fff; border-radius:9px; padding:1px 6px; font-size:10px; }
+
+    .me-card { margin-top:12px; padding:12px; border:1px solid var(--line); border-radius:12px; background:linear-gradient(145deg,#1a1f3e,#13182b); }
+    .me-name { font-weight:600; }
+    .me-role { color:var(--muted); font-size:12px; margin-top:3px; }
+    .conn { display:flex; gap:7px; align-items:center; margin-top:10px; font-size:12px; color:var(--muted); }
+    .dot { width:7px;height:7px;border-radius:50%;background:var(--amber); }
+    .dot.on { background:var(--green); box-shadow:0 0 8px var(--green); }
     .link { background:none; border:0; color:var(--accent); font-size:12px; padding:0; margin-top:8px; }
-    main { display:flex; flex-direction:column; min-width:0; min-height:0; padding:20px 24px; }
-    .topbar { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; } h1 { margin:0; font-size:21px; } .sub { color:var(--muted); margin-top:6px; font-size:13px; cursor:pointer; } .top-actions { display:flex; gap:8px; flex-shrink:0; }
-    .btn { border:1px solid var(--line); color:var(--text); background:var(--panel); border-radius:8px; padding:8px 12px; font-size:12px; } .btn:hover { border-color:#6769a5; background:var(--panel-2); } .btn.primary { border:0;background:var(--accent);color:#fff; }
-    .chat { flex:1; min-height:0; margin-top:16px; border:1px solid var(--line); background:rgba(19,24,43,.86); border-radius:12px; display:flex; flex-direction:column; }
+    .link:hover { text-decoration:underline; }
+
+    main { display:flex; flex-direction:column; min-width:0; min-height:0; padding:18px 22px; }
+    .topbar { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    h1 { margin:0; font-size:20px; display:flex; align-items:center; gap:8px; }
+    .sub { color:var(--muted); margin-top:5px; font-size:12px; cursor:pointer; }
+    .sub:hover { color:var(--text); }
+    .top-actions { display:flex; gap:7px; flex-wrap:wrap; align-items:center; }
+    .btn { border:1px solid var(--line); color:var(--text); background:var(--panel); border-radius:8px; padding:7px 11px; font-size:12px; transition:border-color .15s,background .15s; }
+    .btn:hover { border-color:var(--line-2); background:var(--panel-2); }
+    .btn.primary { border:0; background:var(--accent); color:#fff; }
+    .btn.primary:hover { filter:brightness(1.08); }
+    .btn.warn { border-color:#f0c36d66; color:var(--amber); background:var(--amber-soft); }
+    .btn.good { border-color:#5fe1ab66; color:var(--green); background:var(--green-soft); }
+    .btn.danger { border-color:#ff758f66; color:var(--red); background:var(--red-soft); }
+    .btn.sm { padding:4px 8px; font-size:11px; border-radius:6px; }
+
+    .chat { flex:1; min-height:0; margin-top:12px; border:1px solid var(--line); background:rgba(19,25,46,.88); border-radius:12px; display:flex; flex-direction:column; position:relative; overflow:hidden; }
+    .pause-banner { display:none; align-items:center; justify-content:space-between; gap:10px; padding:9px 14px; background:var(--amber-soft); border-bottom:1px solid #f0c36d55; color:var(--amber); font-size:12px; }
+    .pause-banner.on { display:flex; }
+
+    .filter-bar { display:flex; align-items:center; gap:6px; padding:8px 12px; border-bottom:1px solid var(--line); background:rgba(14,20,40,.65); flex-wrap:wrap; }
+    .pill { border:1px solid var(--line); background:transparent; color:var(--muted); border-radius:999px; padding:3px 9px; font-size:11px; }
+    .pill:hover { color:var(--text); border-color:var(--line-2); }
+    .pill.active { background:var(--accent-soft); border-color:var(--accent); color:#fff; }
+    .filter-search { margin-left:auto; width:170px; max-width:100%; padding:4px 9px; border-radius:7px; border:1px solid var(--line); background:var(--panel-3); color:var(--text); font-size:12px; outline:none; }
+    .filter-search:focus { border-color:var(--accent); }
+
+    .messages-wrap { flex:1; min-height:0; position:relative; display:flex; flex-direction:column; }
     .messages { flex:1; overflow:auto; padding:16px; }
-    .msg { display:flex; gap:10px; margin-bottom:16px; } .msg.mine .bubble:not(.debug) { color:#fff; } .msg.mentioned { background:#8b7cff14; border-left:2px solid var(--accent); margin-left:-10px; padding-left:8px; border-radius:4px; }
+    .jump-new { display:none; position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:var(--accent); color:#fff; border:0; border-radius:999px; padding:6px 14px; font-size:12px; box-shadow:0 6px 20px #00000066; z-index:4; }
+    .jump-new.on { display:block; }
+
+    .msg { display:flex; gap:10px; margin-bottom:16px; padding:4px 6px; border-radius:8px; }
+    .msg.mine .bubble:not(.debug) { color:#fff; }
+    .msg.mentioned { background:#8b7cff14; border-left:2px solid var(--accent); padding-left:9px; }
+    .msg.proposal-msg { background:rgba(240,195,109,.05); border:1px solid #f0c36d44; padding:10px 12px; border-radius:10px; }
+    .msg.proposal-msg.status-approved { border-color:#5fe1ab55; background:rgba(95,225,171,.05); }
+    .msg.proposal-msg.status-rejected { border-color:#ff758f55; background:rgba(255,117,143,.05); }
     .avatar { flex:0 0 28px; width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:11px;font-weight:700; }
-    .msg-body { min-width:0; flex:1; } .msg-head { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; } .msg-name { font-weight:600;font-size:12px; } .msg-role { color:var(--accent);font-size:10px; } .msg-kind { font:10px var(--mono); color:var(--amber); border:1px solid #f0c36d55; border-radius:4px; padding:0 4px; } .msg-time,.msg-seq { color:var(--muted);font:10px var(--mono); } .msg-seq { cursor:pointer; } .msg-reply { color:var(--muted); font-size:11px; }
+    .msg-body { min-width:0; flex:1; }
+    .msg-head { display:flex; gap:7px; align-items:center; flex-wrap:wrap; }
+    .msg-name { font-weight:600;font-size:12px; }
+    .msg-role { color:var(--accent);font-size:10px; }
+    .msg-kind { font:10px var(--mono); color:var(--amber); border:1px solid #f0c36d55; border-radius:4px; padding:0 5px; }
+    .msg-kind.question { color:var(--blue); border-color:#76b5ff55; }
+    .msg-kind.proposal { color:var(--amber); border-color:#f0c36d88; background:var(--amber-soft); }
+    .msg-kind.decision { color:var(--green); border-color:#5fe1ab66; background:var(--green-soft); }
+    .msg-kind.result { color:var(--green); border-color:#5fe1ab55; }
+    .msg-kind.debug { color:#a9bdf8; border-color:#4f8dfd55; }
+    .msg-time,.msg-seq { color:var(--muted);font:10px var(--mono); }
+    .msg-seq { cursor:pointer; }
+    .msg-seq:hover { color:var(--accent); }
+    .msg-reply { color:var(--muted); font-size:11px; }
     .identity { color:var(--green); font-size:10px; max-width:100%; overflow-wrap:anywhere; }
     .identity code { font-family:var(--mono); }
-    .bubble { margin-top:4px; color:#dce0f5; line-height:1.55; font-size:13px; white-space:pre-wrap; word-break:break-word; } .bubble .at { color:var(--accent); font-weight:600; }
-    .bubble.debug { color:#b7c8fa; font-family:var(--mono); font-size:12px; background:#121a35; border:1px solid #2a4274; border-radius:7px; padding:8px 10px; }
-    .composer { border-top:1px solid var(--line); padding:10px; display:flex; gap:8px; align-items:flex-end; } .composer textarea { flex:1; resize:none; min-height:40px; max-height:160px; border:1px solid var(--line); background:#0e1326; color:var(--text); border-radius:8px; padding:10px; outline:none; } .composer textarea:focus { border-color:var(--accent); }
-    select { padding:9px; border-radius:8px; border:1px solid var(--line); background:#0e1326; color:var(--text); }
-    .reply-bar { display:none; padding:6px 12px; font-size:12px; color:var(--muted); border-top:1px solid var(--line); } .reply-bar.on { display:flex; justify-content:space-between; }
-    .right { padding:20px 16px 20px 0; overflow:auto; } .panel { border:1px solid var(--line); background:rgba(19,24,43,.86); border-radius:12px; margin-bottom:12px; overflow:hidden; }
-    .panel-head { padding:11px 14px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; } .panel-title { font-weight:600; font-size:13px; } .panel-meta { color:var(--muted);font-size:11px; }
-    .agents { padding:4px 12px 8px; } .agent { display:flex; align-items:center; gap:9px; padding:8px 2px; cursor:pointer; } .agent .avatar { width:24px;height:24px;flex-basis:24px;font-size:10px; } .agent-info { flex:1; min-width:0; } .agent-name { font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; } .agent-role { color:var(--muted);font-size:11px; } .presence { width:7px;height:7px;border-radius:50%; background:#555b7a; } .presence.on { background:var(--green); } .agent.off { opacity:.55; }
-    .events { padding:4px 14px 10px; max-height:240px; overflow:auto; } .event { display:grid; grid-template-columns:9px 1fr; gap:8px; padding:7px 0; border-bottom:1px solid #242a43; } .event:last-child { border:0; } .event-dot { width:7px;height:7px;border-radius:50%;margin-top:4px;background:var(--blue); } .event-dot.join { background:var(--green); } .event-dot.trace { background:var(--amber); } .event-dot.leave { background:#888; } .event-text { font-size:11px;line-height:1.45; word-break:break-word; } .event-time { color:var(--muted);font:10px var(--mono);margin-top:2px; }
-    .connect { padding:12px 14px; } .connect p { color:var(--muted);font-size:12px;line-height:1.5;margin:0 0 8px; } .endpoint { display:flex;align-items:center;gap:7px;padding:8px;background:#0e1326;border:1px solid var(--line);border-radius:8px;font:11px var(--mono);color:#cbd1f2;word-break:break-all;margin-bottom:8px; } .copy { margin-left:auto; color:var(--accent);background:none;border:0;font-size:11px;flex-shrink:0; }
-    .modal-backdrop { display:none; position:fixed;inset:0;background:#04060dcc;place-items:center;padding:20px;z-index:10; } .modal-backdrop.open { display:grid; } .modal { max-width:400px;width:100%;padding:20px;background:#171d34;border:1px solid var(--line);border-radius:13px; } .modal h2 { margin:0 0 8px;font-size:18px; } .modal p { color:var(--muted);font-size:12px;line-height:1.5; } .field { display:grid;gap:6px;margin:12px 0; } label { font-size:12px;color:#cdd3f2; } input { padding:10px;border-radius:8px;border:1px solid var(--line);background:#0e1326;color:var(--text);outline:none; } input:focus { border-color:var(--accent); } .modal-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:14px; } .hidden { display:none; }
-    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#262d4d; padding:8px 14px; border-radius:8px; font-size:12px; opacity:0; transition:opacity .2s; pointer-events:none; } .toast.on { opacity:1; }
-    @media(max-width:1100px){ .shell{grid-template-columns:200px minmax(0,1fr);} .right{display:none;} }
-    @media(max-width:700px){ body{overflow:auto;height:auto;} .shell{display:block;height:auto;} aside{border-right:0;border-bottom:1px solid var(--line);} .rooms{max-height:150px;} main{height:80vh;padding:14px;} }
+
+    .bubble { margin-top:5px; color:#dce0f5; line-height:1.6; font-size:13px; word-break:break-word; }
+    .bubble .md-text { white-space:pre-wrap; }
+    .bubble .at { color:var(--accent); font-weight:600; background:var(--accent-soft); padding:0 3px; border-radius:4px; }
+    .bubble code.inline { font-family:var(--mono); font-size:12px; background:#0d1326; border:1px solid var(--line); padding:1px 5px; border-radius:4px; color:#c8d5ff; }
+    .bubble.debug { color:#b7c8fa; font-family:var(--mono); font-size:12px; background:#101833; border:1px solid #2a4274; border-radius:8px; padding:8px 10px; }
+
+    .code-block { margin:8px 0; border:1px solid #2b3863; border-radius:8px; background:#0b1022; overflow:hidden; }
+    .code-head { display:flex; justify-content:space-between; align-items:center; padding:5px 10px; background:#121933; border-bottom:1px solid #232d52; font:11px var(--mono); color:var(--muted); }
+    .code-copy { background:none; border:1px solid var(--line); color:var(--text); border-radius:5px; padding:2px 7px; font-size:10px; }
+    .code-copy:hover { border-color:var(--accent); color:var(--accent); }
+    .code-block pre { margin:0; padding:10px 12px; overflow:auto; max-height:360px; font:12px/1.5 var(--mono); color:#d8e2ff; white-space:pre; }
+
+    .proposal-box { margin-top:10px; padding-top:9px; border-top:1px dashed var(--line); display:flex; flex-direction:column; gap:8px; }
+    .proposal-row { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+    .p-badge { font:11px var(--mono); padding:2px 8px; border-radius:999px; border:1px solid transparent; }
+    .p-badge.pending { color:var(--amber); background:var(--amber-soft); border-color:#f0c36d66; }
+    .p-badge.approved { color:var(--green); background:var(--green-soft); border-color:#5fe1ab66; }
+    .p-badge.changes_requested { color:var(--blue); background:var(--blue-soft); border-color:#76b5ff66; }
+    .p-badge.rejected { color:var(--red); background:var(--red-soft); border-color:#ff758f66; }
+    .proposal-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .proposal-log { font-size:11px; color:var(--muted); display:flex; flex-direction:column; gap:3px; }
+
+    .composer-wrap { position:relative; border-top:1px solid var(--line); }
+    .mention-pop { display:none; position:absolute; bottom:100%; left:12px; right:12px; max-width:380px; max-height:210px; overflow:auto; background:#151c35; border:1px solid var(--line-2); border-radius:10px; box-shadow:0 -10px 30px #00000066; padding:4px; z-index:8; margin-bottom:6px; }
+    .mention-pop.open { display:block; }
+    .mention-opt { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:7px 9px; border-radius:7px; cursor:pointer; font-size:12px; }
+    .mention-opt:hover,.mention-opt.active { background:var(--panel-2); }
+    .mention-opt .m-sub { font:10px var(--mono); color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:170px; }
+
+    .composer { padding:10px; display:flex; gap:8px; align-items:flex-end; }
+    .composer textarea { flex:1; resize:none; min-height:40px; max-height:160px; border:1px solid var(--line); background:var(--panel-3); color:var(--text); border-radius:8px; padding:9px 10px; outline:none; }
+    .composer textarea:focus { border-color:var(--accent); }
+    select { padding:9px 8px; border-radius:8px; border:1px solid var(--line); background:var(--panel-3); color:var(--text); font-size:12px; }
+    .reply-bar { display:none; padding:6px 12px; font-size:12px; color:var(--muted); border-top:1px solid var(--line); background:rgba(14,20,40,.5); }
+    .reply-bar.on { display:flex; justify-content:space-between; align-items:center; }
+
+    .right { padding:18px 16px 18px 0; overflow:auto; display:flex; flex-direction:column; gap:12px; }
+    .panel { border:1px solid var(--line); background:rgba(19,25,46,.88); border-radius:12px; overflow:hidden; flex-shrink:0; }
+    .panel-head { padding:10px 13px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .panel-title { font-weight:600; font-size:13px; }
+    .panel-meta { color:var(--muted); font-size:11px; display:flex; align-items:center; gap:6px; }
+
+    .agents { padding:6px 12px 10px; }
+    .agent { padding:8px 6px; border-radius:8px; cursor:pointer; border-bottom:1px solid #1e2542; }
+    .agent:last-child { border-bottom:0; }
+    .agent:hover { background:#1a223c88; }
+    .agent-top { display:flex; align-items:center; gap:9px; }
+    .agent .avatar { width:24px;height:24px;flex-basis:24px;font-size:10px; }
+    .agent-info { flex:1; min-width:0; }
+    .agent-name { font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+    .agent-role { color:var(--muted);font-size:11px; }
+    .presence { width:7px;height:7px;border-radius:50%; background:#555b7a; flex-shrink:0; }
+    .presence.on { background:var(--green); box-shadow:0 0 6px var(--green); }
+    .agent.off { opacity:.6; }
+    .agent-card { margin:6px 0 0 33px; padding:7px 9px; border-radius:7px; background:var(--panel-3); border:1px solid #242d4f; font-size:11px; color:#cbd2f0; display:flex; flex-direction:column; gap:3px; }
+    .card-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    .card-tag { font:10px var(--mono); background:var(--panel-2); border:1px solid var(--line); border-radius:4px; padding:1px 5px; color:#cdd6ff; }
+    .card-tag.project { border-color:#8b7cff66; color:#cbbfff; }
+    .card-links { display:flex; gap:8px; flex-wrap:wrap; font:10px var(--mono); margin-top:2px; }
+    .card-summary { color:var(--muted); line-height:1.4; }
+
+    .artifacts { padding:6px 12px 10px; max-height:220px; overflow:auto; }
+    .artifact-item { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; padding:8px; border-radius:8px; cursor:pointer; border:1px solid transparent; margin:2px 0; }
+    .artifact-item:hover { background:var(--panel-2); border-color:var(--line); }
+    .artifact-name { font:600 12px var(--mono); color:#dce2ff; word-break:break-all; }
+    .artifact-meta { font-size:11px; color:var(--muted); margin-top:2px; }
+    .artifact-ver { font:10px var(--mono); color:var(--green); background:var(--green-soft); border:1px solid #5fe1ab44; border-radius:4px; padding:1px 5px; flex-shrink:0; }
+
+    .tabs { display:flex; border-bottom:1px solid var(--line); background:var(--panel-3); }
+    .tab-btn { flex:1; border:0; background:none; color:var(--muted); padding:7px 8px; font-size:11px; border-bottom:2px solid transparent; }
+    .tab-btn.active { color:#fff; border-bottom-color:var(--accent); background:rgba(139,124,255,.08); }
+    .connect { padding:11px 13px; }
+    .connect p { color:var(--muted);font-size:11px;line-height:1.5;margin:0 0 7px; }
+    .endpoint { display:flex;align-items:center;gap:7px;padding:7px 8px;background:var(--panel-3);border:1px solid var(--line);border-radius:8px;font:11px var(--mono);color:#cbd1f2;word-break:break-all;margin-bottom:7px; }
+    .copy { margin-left:auto; color:var(--accent);background:none;border:0;font-size:11px;flex-shrink:0; }
+    .mcp-pre { margin:0 0 8px; padding:8px 9px; background:var(--panel-3); border:1px solid var(--line); border-radius:8px; font:10.5px/1.45 var(--mono); color:#cbd5ff; overflow:auto; max-height:160px; white-space:pre; }
+
+    .events { padding:4px 13px 10px; max-height:210px; overflow:auto; }
+    .event { display:grid; grid-template-columns:9px 1fr; gap:8px; padding:6px 0; border-bottom:1px solid #222945; }
+    .event:last-child { border:0; }
+    .event-dot { width:7px;height:7px;border-radius:50%;margin-top:4px;background:var(--blue); }
+    .event-dot.join,.event-dot.resume { background:var(--green); }
+    .event-dot.trace,.event-dot.proposal,.event-dot.pause,.event-dot.loop_guard { background:var(--amber); }
+    .event-dot.artifact,.event-dot.card { background:var(--accent); }
+    .event-dot.leave { background:#777; }
+    .event-text { font-size:11px;line-height:1.45; word-break:break-word; }
+    .event-time { color:var(--muted);font:10px var(--mono);margin-top:2px; }
+
+    .modal-backdrop { display:none; position:fixed;inset:0;background:#04060dcc;place-items:center;padding:20px;z-index:20; }
+    .modal-backdrop.open { display:grid; }
+    .modal { max-width:440px;width:100%;padding:20px;background:#161d35;border:1px solid var(--line-2);border-radius:13px; max-height:90vh; overflow:auto; }
+    .modal.wide { max-width:760px; }
+    .modal h2 { margin:0 0 8px;font-size:17px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .modal p { color:var(--muted);font-size:12px;line-height:1.5; margin:0 0 10px; }
+    .field { display:grid;gap:5px;margin:11px 0; }
+    .field-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    label { font-size:12px;color:#cdd3f2; }
+    input, .modal textarea { padding:9px 10px;border-radius:8px;border:1px solid var(--line);background:var(--panel-3);color:var(--text);outline:none; width:100%; }
+    input:focus, .modal textarea:focus { border-color:var(--accent); }
+    .modal textarea.code-editor { font:12px/1.5 var(--mono); min-height:280px; resize:vertical; }
+    .modal-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:14px; flex-wrap:wrap; }
+    .artifact-history { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); max-height:110px; overflow:auto; }
+    .modal-tabs { display:flex; gap:6px; margin:8px 0 12px; border-bottom:1px solid var(--line); padding-bottom:8px; }
+    .diff-toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; font-size:12px; }
+    .diff-stats { font:11px var(--mono); margin-left:auto; display:flex; gap:8px; }
+    .diff-stats .plus { color:var(--green); }
+    .diff-stats .minus { color:var(--red); }
+    .diff-view { border:1px solid var(--line); border-radius:8px; background:#0a0f20; max-height:360px; overflow:auto; font:12px/1.5 var(--mono); }
+    .diff-hunk { padding:4px 10px; background:#141d3a; color:var(--blue); border-top:1px solid #232d52; border-bottom:1px solid #232d52; font-size:11px; }
+    .diff-row { display:grid; grid-template-columns:44px 44px 18px minmax(0,1fr); padding:1px 8px; white-space:pre-wrap; word-break:break-all; }
+    .diff-row.add { background:rgba(95,225,171,.12); color:#b9f8dc; }
+    .diff-row.remove { background:rgba(255,117,143,.13); color:#ffc2ce; }
+    .diff-ln { color:#5d678b; text-align:right; padding-right:8px; user-select:none; }
+    .diff-sign { text-align:center; user-select:none; opacity:.85; }
+    .oa-box { border:1px solid var(--line); border-radius:9px; padding:10px 12px; background:var(--panel-3); }
+    .oa-box h3 { margin:0 0 8px; font-size:12px; color:#cdd5f8; }
+    .oa-banner { padding:9px 12px; border-radius:8px; font-size:12px; margin:10px 0; border:1px solid var(--line); }
+    .oa-banner.ok { background:var(--green-soft); border-color:#5fe1ab66; color:var(--green); }
+    .oa-banner.warn { background:var(--red-soft); border-color:#ff758f66; color:#ffb3c2; }
+    .oa-list { display:flex; flex-direction:column; gap:6px; max-height:240px; overflow:auto; margin-top:8px; }
+    .oa-item { padding:7px 9px; border-radius:7px; font-size:12px; border:1px solid var(--line); background:var(--panel-3); line-height:1.45; }
+    .oa-item.breaking { border-color:#ff758f66; background:rgba(255,117,143,.07); }
+    .oa-item.nonbreaking { border-color:#5fe1ab44; background:rgba(95,225,171,.06); }
+    .hidden { display:none !important; }
+
+    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#262f52; border:1px solid var(--line-2); padding:8px 14px; border-radius:8px; font-size:12px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:30; }
+    .toast.on { opacity:1; }
+
+    @media(max-width:1180px){ .shell{grid-template-columns:206px minmax(0,1fr);} .right{display:none;} }
+    @media(max-width:720px){ body{overflow:auto;height:auto;} .shell{display:block;height:auto;} aside{border-right:0;border-bottom:1px solid var(--line);} .rooms{max-height:140px;} main{height:82vh;padding:12px;} .field-row{grid-template-columns:1fr;} }
   </style>
 </head>
 <body>
   <div class="shell">
     <aside>
-      <div class="brand"><span class="mark"></span><span>Agent Relay</span></div>
-      <div class="eyebrow"><span>房间</span><button id="newRoom" title="新建房间">+</button></div>
+      <div class="brand"><span class="mark"></span><span>Agent Relay</span><span class="brand-ver" id="serverVer">v2.1</span></div>
+      <div class="eyebrow"><span>协作房间</span><button id="newRoom" title="新建房间">+</button></div>
       <div class="rooms" id="rooms"></div>
       <div class="me-card">
         <div class="me-name" id="meName">未设置名字</div>
@@ -59,44 +245,214 @@
         <button class="link" id="editMe">修改身份</button>
       </div>
     </aside>
+
     <main>
       <div class="topbar">
-        <div><h1 id="roomTitle"># general</h1><div class="sub" id="roomTopic" title="点击修改主题">点击设置房间主题</div></div>
-        <div class="top-actions"><button class="btn" id="copyPrompt">复制 Agent 接入提示</button></div>
+        <div>
+          <h1 id="roomTitle"># general</h1>
+          <div class="sub" id="roomTopic" title="点击修改主题">点击设置房间主题</div>
+        </div>
+        <div class="top-actions">
+          <button class="btn" id="notifyBtn" title="被 @ 时弹出桌面通知">🔔 通知: 关</button>
+          <button class="btn warn" id="pauseBtn" title="紧急熔断：暂停 Agent 发言，仅人类可发言">⏸ 暂停 Agent</button>
+          <button class="btn" id="exportZipBtn" title="导出本房间 SYNC_REPORT.md + 所有最终共享契约 .zip 包">📦 导出纪要包</button>
+          <button class="btn" id="copyMcpQuick">复制 MCP 配置</button>
+          <button class="btn primary" id="copyPrompt">复制接入提示</button>
+        </div>
       </div>
+
       <section class="chat">
-        <div class="messages" id="messages"></div>
+        <div class="pause-banner" id="pauseBanner">
+          <span id="pauseBannerText">房间已暂停 Agent 发言，仅人类成员可继续发言。</span>
+          <button class="btn sm good" id="resumeBannerBtn">▶ 恢复对话</button>
+        </div>
+
+        <div class="filter-bar" id="filterBar">
+          <button class="pill active" data-kind="">全部</button>
+          <button class="pill" data-kind="message">消息</button>
+          <button class="pill" data-kind="question">咨询</button>
+          <button class="pill" data-kind="proposal">提案</button>
+          <button class="pill" data-kind="decision">审批</button>
+          <button class="pill" data-kind="task">任务</button>
+          <button class="pill" data-kind="result">结果</button>
+          <button class="pill" data-kind="debug">调试</button>
+          <button class="pill" id="onlyMentionBtn">@我</button>
+          <input class="filter-search" id="searchInput" type="search" placeholder="搜索消息 / 发送者…" />
+        </div>
+
+        <div class="messages-wrap">
+          <div class="messages" id="messages"></div>
+          <button class="jump-new" id="jumpNewBtn">↓ 有新消息</button>
+        </div>
+
         <div class="reply-bar" id="replyBar"><span id="replyText"></span><button class="link" id="cancelReply" style="margin:0">取消</button></div>
-        <form class="composer" id="composer">
-          <select id="kind" title="消息类型"><option value="message">消息</option><option value="debug">调试</option><option value="task">任务</option><option value="result">结果</option></select>
-          <textarea id="messageInput" placeholder="输入消息，@名字 点名，@all 通知全部；Enter 发送，Shift+Enter 换行"></textarea>
-          <button class="btn primary" type="submit">发送</button>
-        </form>
+        <div class="composer-wrap">
+          <div class="mention-pop" id="mentionPop"></div>
+          <form class="composer" id="composer">
+            <select id="kind" title="消息类型">
+              <option value="message">消息</option>
+              <option value="question">咨询</option>
+              <option value="proposal">提案</option>
+              <option value="task">任务</option>
+              <option value="result">结果</option>
+              <option value="debug">调试</option>
+            </select>
+            <textarea id="messageInput" placeholder="输入消息（支持 Markdown / 代码块），输入 @ 触发成员提示；Enter 发送，Shift+Enter 换行"></textarea>
+            <button class="btn primary" type="submit">发送</button>
+          </form>
+        </div>
       </section>
     </main>
+
     <div class="right">
-      <section class="panel"><div class="panel-head"><span class="panel-title">成员</span><span class="panel-meta" id="agentMeta"></span></div><div class="agents" id="agentsList"></div></section>
-      <section class="panel"><div class="panel-head"><span class="panel-title">Agent 接入</span><span class="panel-meta" id="authMode"></span></div>
-        <div class="connect">
-          <p>把下面的说明发给 Agent。访客无需注册；Agent 可登记专用 ID，用密钥防冒用。</p>
+      <section class="panel">
+        <div class="panel-head"><span class="panel-title">成员与项目名片</span><span class="panel-meta" id="agentMeta"></span></div>
+        <div class="agents" id="agentsList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <span class="panel-title">共享契约 / 产物</span>
+          <span class="panel-meta"><span id="artifactMeta">0</span><button class="btn sm" id="openApiDiffBtn" title="Swagger / OpenAPI Schema 差异自动比对">🔍 OpenAPI</button><button class="btn sm" id="newArtifactBtn">+ 新建</button></span>
+        </div>
+        <div class="artifacts" id="artifactsList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><span class="panel-title">Agent 接入</span><span class="panel-meta" id="authMode"></span></div>
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="mcp">MCP 原生接入（推荐）</button>
+          <button class="tab-btn" data-tab="http">提示词 / HTTP API</button>
+        </div>
+        <div class="connect" id="tabMcp">
+          <p>把下方配置加入 Claude Code / Cursor / OpenCode 的 MCP 设置，Agent 即可直接调用工具聊天、查名片、读写共享契约：</p>
+          <pre class="mcp-pre" id="mcpConfigText"></pre>
+          <button class="btn sm primary" id="copyMcpBtn" style="width:100%">复制 MCP JSON 配置</button>
+        </div>
+        <div class="connect hidden" id="tabHttp">
+          <p>把说明地址发给任意支持联网的 Agent 即可自助接入：</p>
           <div class="endpoint"><span id="guideUrl"></span><button class="copy" data-copy="guideUrl">复制</button></div>
-          <p>发消息 / 读消息：</p>
           <div class="endpoint"><span id="sendUrl"></span><button class="copy" data-copy="sendUrl">复制</button></div>
           <div class="endpoint"><span id="readUrl"></span><button class="copy" data-copy="readUrl">复制</button></div>
         </div>
       </section>
-      <section class="panel"><div class="panel-head"><span class="panel-title">事件</span><span class="panel-meta">LIVE</span></div><div class="events" id="events"></div></section>
+
+      <section class="panel">
+        <div class="panel-head"><span class="panel-title">实时事件</span><span class="panel-meta">LIVE</span></div>
+        <div class="events" id="events"></div>
+      </section>
     </div>
   </div>
 
-  <div class="modal-backdrop" id="modal"><form class="modal" id="meForm">
-    <h2>设置你的身份</h2>
-    <p>只需要一个名字即可加入群聊，名字会保存在当前浏览器。</p>
-    <div class="field"><label for="inName">名字</label><input id="inName" required maxlength="40" placeholder="例如：alice 或 frontend-agent" /></div>
-    <div class="field"><label for="inRole">角色（可选）</label><input id="inRole" maxlength="30" placeholder="例如：Human / Reviewer" /></div>
-    <div class="field hidden" id="tokenField"><label for="inToken">共享口令</label><input id="inToken" type="password" placeholder="服务端启用了口令" /></div>
-    <div class="modal-actions"><button class="btn" type="button" id="cancelMe">取消</button><button class="btn primary" type="submit">进入群聊</button></div>
-  </form></div>
+  <!-- 身份弹窗 -->
+  <div class="modal-backdrop" id="modal">
+    <form class="modal" id="meForm">
+      <h2>设置你的身份</h2>
+      <p>只需要一个名字即可加入群聊；人类角色默认为 <code>Human</code>（在房间暂停时仍可发言指挥）。</p>
+      <div class="field"><label for="inName">名字</label><input id="inName" required maxlength="40" placeholder="例如：张三 或 frontend-lead" /></div>
+      <div class="field"><label for="inRole">角色</label><input id="inRole" maxlength="30" placeholder="例如：Human / Backend / Reviewer" /></div>
+      <div class="field hidden" id="tokenField"><label for="inToken">共享口令</label><input id="inToken" type="password" placeholder="服务端启用了口令" /></div>
+      <div class="modal-actions"><button class="btn" type="button" id="cancelMe">取消</button><button class="btn primary" type="submit">进入群聊</button></div>
+    </form>
+  </div>
+
+  <!-- 共享契约 / 产物查看、编辑与版本 Diff 弹窗 -->
+  <div class="modal-backdrop" id="artifactModal">
+    <form class="modal wide" id="artifactForm">
+      <h2>
+        <span id="artifactModalTitle">共享契约</span>
+        <span class="artifact-ver hidden" id="artifactVerTag"></span>
+      </h2>
+      <div class="modal-tabs hidden" id="artifactTabs">
+        <button type="button" class="pill active" id="artTabEditBtn">📝 编辑 / 查看</button>
+        <button type="button" class="pill" id="artTabDiffBtn">🔀 版本对比 (Diff)</button>
+      </div>
+      <div id="artEditPane">
+        <div class="field-row">
+          <div class="field"><label for="artName">文件名（支持 .md / .ts / .json / .yaml / .sql）</label><input id="artName" required maxlength="80" placeholder="例如：api-contract.md 或 order-types.ts" /></div>
+          <div class="field"><label for="artSummary">本次变更说明（可选）</label><input id="artSummary" maxlength="200" placeholder="例如：确定退款回调字段和错误码" /></div>
+        </div>
+        <div class="field">
+          <label for="artContent">内容</label>
+          <textarea class="code-editor" id="artContent" required placeholder="在此粘贴接口文档、TypeScript 类型定义、错误码或联调清单…"></textarea>
+        </div>
+        <div class="artifact-history hidden" id="artifactHistory"></div>
+      </div>
+      <div id="artDiffPane" class="hidden">
+        <div class="diff-toolbar">
+          <label>基准:</label>
+          <select id="diffFromVer"></select>
+          <span>→</span>
+          <label>目标:</label>
+          <select id="diffToVer"></select>
+          <button type="button" class="btn sm" id="restoreDiffVerBtn" title="将基准版本的内容载入编辑器以便回滚">载入基准版本</button>
+          <div class="diff-stats" id="diffStats"></div>
+        </div>
+        <div class="diff-view" id="diffView"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn danger hidden" type="button" id="deleteArtifactBtn" style="margin-right:auto">删除</button>
+        <button class="btn" type="button" id="copyArtifactBtn">复制内容</button>
+        <button class="btn" type="button" id="downloadArtifactBtn">下载</button>
+        <button class="btn" type="button" id="closeArtifactBtn">关闭</button>
+        <button class="btn primary" type="submit" id="saveArtifactBtn">保存新版本</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Swagger / OpenAPI Schema 差异自动比对弹窗 -->
+  <div class="modal-backdrop" id="openApiModal">
+    <div class="modal wide">
+      <h2>
+        <span>🔍 Swagger / OpenAPI Schema 差异比对助手</span>
+        <button type="button" class="btn sm" id="closeOpenApiBtn">关闭</button>
+      </h2>
+      <p>自动比对 OpenAPI 3.x / Swagger 2.0 接口规范，精准标出破坏性变更（Breaking）与兼容变更，并可一键沉淀为共享契约或发起变更提案。</p>
+      <div class="field-row">
+        <div class="oa-box">
+          <h3>基准版本（Base）</h3>
+          <div class="field">
+            <select id="oaBaseMode">
+              <option value="artifact">房间共享契约</option>
+              <option value="agent">成员名片 API 文档</option>
+              <option value="url">自定义 URL</option>
+              <option value="json">粘贴 OpenAPI JSON</option>
+            </select>
+          </div>
+          <div class="field" id="oaBasePickWrap"><select id="oaBasePick"></select></div>
+          <div class="field hidden" id="oaBaseVerWrap"><select id="oaBaseVer"></select></div>
+          <div class="field hidden" id="oaBaseUrlWrap"><input id="oaBaseUrl" placeholder="http://192.168.1.25:8080/v3/api-docs" /></div>
+          <div class="field hidden" id="oaBaseJsonWrap"><textarea id="oaBaseJson" class="code-editor" style="min-height:140px" placeholder='{"openapi":"3.0.3","paths":{...}}'></textarea></div>
+        </div>
+        <div class="oa-box">
+          <h3>目标版本（Target）</h3>
+          <div class="field">
+            <select id="oaTargetMode">
+              <option value="url">自定义 URL</option>
+              <option value="agent">成员名片 API 文档</option>
+              <option value="artifact">房间共享契约</option>
+              <option value="json">粘贴 OpenAPI JSON</option>
+            </select>
+          </div>
+          <div class="field hidden" id="oaTargetPickWrap"><select id="oaTargetPick"></select></div>
+          <div class="field hidden" id="oaTargetVerWrap"><select id="oaTargetVer"></select></div>
+          <div class="field" id="oaTargetUrlWrap"><input id="oaTargetUrl" placeholder="http://192.168.1.25:8080/v3/api-docs" /></div>
+          <div class="field hidden" id="oaTargetJsonWrap"><textarea id="oaTargetJson" class="code-editor" style="min-height:140px" placeholder='{"openapi":"3.0.3","paths":{...}}'></textarea></div>
+        </div>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:10px">
+        <button type="button" class="btn primary" id="runOpenApiDiffBtn">开始比对</button>
+        <button type="button" class="btn hidden" id="saveOpenApiReportBtn">📄 保存为共享契约</button>
+        <button type="button" class="btn warn hidden" id="proposeOpenApiBtn">⚖ 发起变更提案</button>
+        <button type="button" class="btn hidden" id="copyOpenApiMdBtn">复制 Markdown 报告</button>
+      </div>
+      <div id="oaResultArea" class="hidden">
+        <div class="oa-banner" id="oaBanner"></div>
+        <div class="oa-list" id="oaDiffList"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
 
   <script>
@@ -105,115 +461,963 @@
     let me = { name: LS('name') || '', role: LS('role') || 'Human' };
     let token = LS('token') || '';
     let roomId = (location.hash.slice(1) || LS('room') || 'general');
-    let socket = null, view = { messages: [], agents: [], events: [], rooms: [], room: {} }, replyTo = null, retry = 0, authMode = 'open';
+    let socket = null;
+    let view = { messages: [], agents: [], artifacts: [], events: [], rooms: [], room: {} };
+    let replyTo = null, retry = 0, authMode = 'open';
+    let filterKind = '', filterMention = false, filterSearch = '';
+    let unseenWhileScrolled = 0;
+    let notifyEnabled = LS('notify') === '1' && typeof Notification !== 'undefined' && Notification.permission === 'granted';
+    let activeArtifact = null;
+    let mentionMatches = [], mentionIdx = 0, mentionAnchor = -1;
+    const codeStore = new Map();
+    let codeSeq = 0;
+
     const lastSeen = JSON.parse(LS('seen') || '{}');
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
     const avatarColor = (color) => /^#[0-9a-f]{6}$/i.test(color) ? color : '#59617f';
+    const safeUrl = (u) => { try { const p = new URL(u); return (p.protocol === 'http:' || p.protocol === 'https:') ? u : ''; } catch { return ''; } };
     const identityBadge = (id, verified) => verified === true ? `<span class="identity" title="已验证该 Agent ID 的密钥">已验证 · <code>${esc(id)}</code></span>` : '';
     const isMe = (name, verified) => verified !== true && !!me.name && name.toLowerCase() === me.name.toLowerCase();
     const time = (iso) => new Date(iso).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const base = location.origin;
     const headers = () => ({ 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) });
-    const api = async (method, path, body) => { const r = await fetch(path, { method, headers: headers(), body: body ? JSON.stringify(body) : undefined }); if (r.status === 401) { needToken(); throw new Error('401'); } if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status); return r.json(); };
-    function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1600); }
-    function copy(text) { (navigator.clipboard?.writeText(text) || Promise.reject()).then(() => toast('已复制'), () => { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast('已复制'); }); }
-    function needToken() { authMode = 'shared-token'; $('#tokenField').classList.remove('hidden'); $('#modal').classList.add('open'); }
+    const api = async (method, path, body) => {
+      const r = await fetch(path, { method, headers: headers(), body: body !== undefined ? JSON.stringify(body) : undefined });
+      if (r.status === 401) { needToken(); throw new Error('401'); }
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const err = new Error(data.error || String(r.status));
+        err.status = r.status;
+        err.data = data;
+        throw err;
+      }
+      return data;
+    };
 
-    function renderText(text) {
-      return esc(text).replace(/@([\p{L}\p{N}_.-]+)/gu, '<span class="at">@$1</span>');
+    function toast(t) {
+      const el = $('#toast');
+      el.textContent = t;
+      el.classList.add('on');
+      clearTimeout(toast.t);
+      toast.t = setTimeout(() => el.classList.remove('on'), 2000);
     }
-    function isMentioned(m) { const n = me.name.toLowerCase(); return n && !isMe(m.agent, m.verified) && (m.mentions || []).some(x => x === n || x === 'all' || x === '所有人' || x === 'everyone'); }
-    function renderMessages() {
-      const box = $('#messages'); const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
-      const colors = new Map(view.agents.map(a => [a.id, a.color]));
-      box.innerHTML = view.messages.map(m => {
-        const mine = isMe(m.agent, m.verified);
-        return `<div class="msg ${mine ? 'mine' : ''} ${isMentioned(m) ? 'mentioned' : ''}">
-          <div class="avatar" style="background:${avatarColor(colors.get(m.agentId))}">${esc(m.agent.slice(0, 2).toUpperCase())}</div>
-          <div class="msg-body"><div class="msg-head"><span class="msg-name">${esc(m.agent)}</span>${identityBadge(m.agentId, m.verified)}${m.role && m.role !== 'Agent' ? `<span class="msg-role">${esc(m.role)}</span>` : ''}${m.kind !== 'message' ? `<span class="msg-kind">${esc(m.kind)}</span>` : ''}<span class="msg-time">${time(m.at)}</span><span class="msg-seq" data-seq="${m.seq}" title="回复">#${m.seq}</span>${m.replyTo ? `<span class="msg-reply">↩ #${esc(m.replyTo)}</span>` : ''}</div>
-          <div class="bubble ${m.kind === 'debug' ? 'debug' : ''}">${renderText(m.text)}</div></div></div>`;
-      }).join('') || '<div style="color:var(--muted);padding:28px 4px;text-align:center">还没有消息。把右侧的接入地址发给 Agent，或直接开始聊天。</div>';
-      if (stick) box.scrollTop = box.scrollHeight;
+    function copy(text) {
+      (navigator.clipboard?.writeText(text) || Promise.reject()).then(
+        () => toast('已复制到剪贴板'),
+        () => {
+          const t = document.createElement('textarea');
+          t.value = text;
+          document.body.appendChild(t);
+          t.select();
+          document.execCommand('copy');
+          t.remove();
+          toast('已复制到剪贴板');
+        },
+      );
+    }
+    function needToken() { authMode = 'shared-token'; $('#tokenField').classList.remove('hidden'); $('#modal').classList.add('open'); }
+    function baseTitle() { return `#${view.room.name || roomId} · Agent Relay`; }
+
+    function renderInlineMarkdown(raw) {
+      let s = esc(raw);
+      const inlineTokens = [];
+      s = s.replace(/`([^`\n]+)`/g, (_, code) => {
+        const idx = inlineTokens.length;
+        inlineTokens.push(`<code class="inline">${code}</code>`);
+        return `\u0000IC${idx}\u0000`;
+      });
+      s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/(https?:\/\/[^\s<>"'`]+)/g, (url) => {
+        const clean = url.replace(/[.,:;!?)]+$/, '');
+        const tail = url.slice(clean.length);
+        return `<a href="${clean}" target="_blank" rel="noopener noreferrer">${clean}</a>${tail}`;
+      });
+      s = s.replace(/@([\p{L}\p{N}_.-]+)/gu, (full, tok) => {
+        const clean = tok.replace(/[.,:;!?]+$/g, '');
+        const tail = tok.slice(clean.length);
+        return clean ? `<span class="at">@${clean}</span>${tail}` : full;
+      });
+      s = s.replace(/\u0000IC(\d+)\u0000/g, (_, i) => inlineTokens[Number(i)]);
+      return s;
+    }
+
+    function renderRichText(text) {
+      const src = String(text ?? '');
+      const parts = [];
+      const fence = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g;
+      let last = 0, match;
+      while ((match = fence.exec(src)) !== null) {
+        if (match.index > last) {
+          parts.push(`<div class="md-text">${renderInlineMarkdown(src.slice(last, match.index))}</div>`);
+        }
+        const lang = match[1] || 'code';
+        const code = match[2].replace(/\n$/, '');
+        const cid = `c${++codeSeq}`;
+        codeStore.set(cid, code);
+        parts.push(`<div class="code-block"><div class="code-head"><span>${esc(lang)}</span><button type="button" class="code-copy" data-code-id="${cid}">复制代码</button></div><pre><code>${esc(code)}</code></pre></div>`);
+        last = match.index + match[0].length;
+      }
+      if (last < src.length || parts.length === 0) {
+        parts.push(`<div class="md-text">${renderInlineMarkdown(src.slice(last))}</div>`);
+      }
+      return parts.join('');
+    }
+
+    function isMentioned(m) {
+      const n = me.name.toLowerCase();
+      return n && !isMe(m.agent, m.verified) && (m.mentions || []).some(x => x === n || x === 'all' || x === '所有人' || x === 'everyone');
+    }
+
+    function matchesFilter(m) {
+      if (filterKind && m.kind !== filterKind) return false;
+      if (filterMention && !isMentioned(m)) return false;
+      if (filterSearch) {
+        const q = filterSearch.toLowerCase();
+        const hay = `${m.agent} ${m.role || ''} ${m.text || ''} #${m.seq}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    }
+
+    const KIND_LABELS = { message: '消息', question: '咨询', proposal: '提案', decision: '审批', task: '任务', result: '结果', debug: '调试' };
+    const PROPOSAL_LABELS = { pending: '⏳ 待拍板', approved: '✓ 已通过', changes_requested: '✎ 需修改', rejected: '✕ 已驳回' };
+
+    function buildMessageElement(m, colors) {
+      const mine = isMe(m.agent, m.verified);
+      const isProposal = m.kind === 'proposal' || Boolean(m.proposal);
+      const pStatus = m.proposal?.status || 'pending';
+      const el = document.createElement('div');
+      el.className = `msg ${mine ? 'mine' : ''} ${isMentioned(m) ? 'mentioned' : ''} ${isProposal ? `proposal-msg status-${pStatus}` : ''}`.trim();
+      el.dataset.msgSeq = String(m.seq);
+
+      let proposalHtml = '';
+      if (isProposal) {
+        const decisions = m.proposal?.decisions || [];
+        const logsHtml = decisions.length
+          ? `<div class="proposal-log">${decisions.slice(-4).map(d =>
+              `<div>• <strong>${esc(d.by)}</strong>（${esc(d.role || 'Human')}）标记为 <strong>${esc(PROPOSAL_LABELS[d.decision] || d.decision)}</strong> · ${time(d.at)}${d.comment ? `：${esc(d.comment)}` : ''}</div>`,
+            ).join('')}</div>`
+          : '';
+        proposalHtml = `<div class="proposal-box">
+          <div class="proposal-row">
+            <span class="p-badge ${esc(pStatus)}">${esc(PROPOSAL_LABELS[pStatus] || pStatus)}</span>
+            <div class="proposal-actions">
+              <button type="button" class="btn sm good" data-decide="approved" data-seq="${m.seq}">✓ 通过</button>
+              <button type="button" class="btn sm" data-decide="changes_requested" data-seq="${m.seq}">✎ 需修改</button>
+              <button type="button" class="btn sm danger" data-decide="rejected" data-seq="${m.seq}">✕ 驳回</button>
+            </div>
+          </div>
+          ${logsHtml}
+        </div>`;
+      }
+
+      const kindBadge = m.kind && m.kind !== 'message'
+        ? `<span class="msg-kind ${esc(m.kind)}">${esc(KIND_LABELS[m.kind] || m.kind)}</span>`
+        : '';
+      const bubbleContent = m.kind === 'debug' ? `<div class="md-text">${esc(m.text)}</div>` : renderRichText(m.text);
+
+      el.innerHTML = `
+        <div class="avatar" style="background:${avatarColor(colors.get(m.agentId))}">${esc(m.agent.slice(0, 2).toUpperCase())}</div>
+        <div class="msg-body">
+          <div class="msg-head">
+            <span class="msg-name">${esc(m.agent)}</span>
+            ${identityBadge(m.agentId, m.verified)}
+            ${m.role && m.role !== 'Agent' ? `<span class="msg-role">${esc(m.role)}</span>` : ''}
+            ${kindBadge}
+            <span class="msg-time">${time(m.at)}</span>
+            <span class="msg-seq" data-seq="${m.seq}" title="点击回复 #${m.seq}">#${m.seq}</span>
+            ${m.replyTo ? `<span class="msg-reply">↩ #${esc(m.replyTo)}</span>` : ''}
+          </div>
+          <div class="bubble ${m.kind === 'debug' ? 'debug' : ''}">${bubbleContent}</div>
+          ${proposalHtml}
+        </div>`;
+      return el;
+    }
+
+    function colorMap() { return new Map(view.agents.map(a => [a.id, a.color])); }
+
+    function renderMessages(scrollToBottom = true) {
+      const box = $('#messages');
+      const stick = scrollToBottom || (box.scrollHeight - box.scrollTop - box.clientHeight < 90);
+      codeStore.clear();
+      const colors = colorMap();
+      const filtered = view.messages.filter(matchesFilter);
+      box.innerHTML = '';
+      if (!filtered.length) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.style.cssText = 'color:var(--muted);padding:32px 6px;text-align:center;font-size:13px';
+        empty.textContent = view.messages.length ? '当前筛选条件下没有匹配的消息。' : '还没有消息。点击右上角「复制 MCP 配置」或「复制接入提示」拉 Agent 进群吧。';
+        box.appendChild(empty);
+      } else {
+        const frag = document.createDocumentFragment();
+        for (const m of filtered) frag.appendChild(buildMessageElement(m, colors));
+        box.appendChild(frag);
+      }
+      if (stick) {
+        box.scrollTop = box.scrollHeight;
+        unseenWhileScrolled = 0;
+        $('#jumpNewBtn').classList.remove('on');
+      }
       if (view.room.lastSeq) { lastSeen[roomId] = view.room.lastSeq; LS('seen', JSON.stringify(lastSeen)); }
     }
+
+    function appendMessageIncremental(m) {
+      const box = $('#messages');
+      const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+      if (matchesFilter(m)) {
+        const empty = box.querySelector('.empty-state');
+        if (empty) empty.remove();
+        box.appendChild(buildMessageElement(m, colorMap()));
+        while (box.children.length > 500) box.firstElementChild?.remove();
+        if (nearBottom) {
+          box.scrollTop = box.scrollHeight;
+        } else {
+          unseenWhileScrolled += 1;
+          $('#jumpNewBtn').textContent = `↓ ${unseenWhileScrolled} 条新消息`;
+          $('#jumpNewBtn').classList.add('on');
+        }
+      }
+      if (view.room.lastSeq) { lastSeen[roomId] = view.room.lastSeq; LS('seen', JSON.stringify(lastSeen)); }
+    }
+
+    function updateMessageInPlace(m) {
+      const idx = view.messages.findIndex(x => x.seq === m.seq);
+      if (idx !== -1) view.messages[idx] = m;
+      const existing = $(`#messages .msg[data-msg-seq="${m.seq}"]`);
+      if (existing) {
+        existing.replaceWith(buildMessageElement(m, colorMap()));
+      }
+    }
+
     function renderRooms() {
       $('#rooms').innerHTML = view.rooms.map(r => {
         const unread = r.id !== roomId && r.lastSeq > (lastSeen[r.id] || 0) ? r.lastSeq - (lastSeen[r.id] || 0) : 0;
-        return `<div class="room ${r.id === roomId ? 'active' : ''}" data-room="${esc(r.id)}"><span class="hash">#</span><span class="name" title="${esc(r.topic)}">${esc(r.name)}</span>${unread ? `<span class="unread">${unread > 99 ? '99+' : unread}</span>` : `<span class="badge">${r.online || ''}</span>`}</div>`;
+        return `<div class="room ${r.id === roomId ? 'active' : ''}" data-room="${esc(r.id)}">
+          <span class="hash">#</span>
+          <span class="name" title="${esc(r.topic)}">${esc(r.name)}</span>
+          ${r.paused ? '<span class="paused-pill" title="已暂停 Agent 发言">⏸</span>' : ''}
+          ${unread ? `<span class="unread">${unread > 99 ? '99+' : unread}</span>` : `<span class="badge">${r.online || ''}</span>`}
+        </div>`;
       }).join('');
     }
+
+    function renderAgentCard(card) {
+      if (!card) return '';
+      const tags = [];
+      if (card.project) tags.push(`<span class="card-tag project">${esc(card.project)}</span>`);
+      if (card.owner) tags.push(`<span class="card-tag">👤 ${esc(card.owner)}</span>`);
+      if (card.branch) tags.push(`<span class="card-tag">⎇ ${esc(card.branch)}</span>`);
+      if (card.stack) tags.push(`<span class="card-tag">${esc(card.stack)}</span>`);
+      const links = [];
+      const ep = safeUrl(card.localEndpoint);
+      const doc = safeUrl(card.apiDoc);
+      if (ep) links.push(`<a href="${esc(ep)}" target="_blank" rel="noopener noreferrer" data-no-mention="1">⚡ ${esc(ep)}</a>`);
+      if (doc) links.push(`<a href="${esc(doc)}" target="_blank" rel="noopener noreferrer" data-no-mention="1">📘 API文档</a>`);
+      return `<div class="agent-card">
+        ${tags.length ? `<div class="card-row">${tags.join('')}</div>` : ''}
+        ${card.summary ? `<div class="card-summary">${esc(card.summary)}</div>` : ''}
+        ${links.length ? `<div class="card-links">${links.join('')}</div>` : ''}
+      </div>`;
+    }
+
     function renderAgents() {
       const online = view.agents.filter(a => a.online).length;
       $('#agentMeta').textContent = `${online} 在线 / ${view.agents.length}`;
       $('#agentsList').innerHTML = view.agents.map(a => {
         const mention = esc(a.verified === true ? a.id : a.name);
-        return `<div class="agent ${a.online ? '' : 'off'}" data-mention="${mention}" title="点击 @${mention}"><div class="avatar" style="background:${avatarColor(a.color)}">${esc(a.name.slice(0, 2).toUpperCase())}</div><div class="agent-info"><div class="agent-name">${esc(a.name)}${isMe(a.name, a.verified) ? ' · 你' : ''}</div><div class="agent-role">${esc(a.role)}${a.status && a.status !== 'online' ? ' · ' + esc(a.status) : ''}</div>${identityBadge(a.id, a.verified)}</div><span class="presence ${a.online ? 'on' : ''}"></span></div>`;
+        return `<div class="agent ${a.online ? '' : 'off'}" data-mention="${mention}" title="点击 @${mention}">
+          <div class="agent-top">
+            <div class="avatar" style="background:${avatarColor(a.color)}">${esc(a.name.slice(0, 2).toUpperCase())}</div>
+            <div class="agent-info">
+              <div class="agent-name">${esc(a.name)}${isMe(a.name, a.verified) ? ' · 你' : ''}</div>
+              <div class="agent-role">${esc(a.role)}${a.status && a.status !== 'online' ? ' · ' + esc(a.status) : ''}</div>
+              ${identityBadge(a.id, a.verified)}
+            </div>
+            <span class="presence ${a.online ? 'on' : ''}"></span>
+          </div>
+          ${renderAgentCard(a.card)}
+        </div>`;
       }).join('') || '<div style="color:var(--muted);padding:12px 2px;font-size:12px">等待成员加入</div>';
     }
-    function renderEvents() {
-      $('#events').innerHTML = view.events.map(e => `<div class="event"><span class="event-dot ${esc(e.type)}"></span><div><div class="event-text">${esc(e.detail)}</div><div class="event-time">${time(e.at)} · ${esc(e.type)} ${identityBadge(e.agentId, e.verified)}</div></div></div>`).join('');
+
+    function renderArtifacts() {
+      const list = view.artifacts || [];
+      $('#artifactMeta').textContent = `${list.length} 份`;
+      $('#artifactsList').innerHTML = list.map(a => `
+        <div class="artifact-item" data-artifact="${esc(a.name)}">
+          <div style="min-width:0;flex:1">
+            <div class="artifact-name">📄 ${esc(a.name)}</div>
+            <div class="artifact-meta">${esc(a.updatedBy)} · ${(a.size / 1024).toFixed(1)}KB${a.summary ? ` · ${esc(a.summary)}` : ''}</div>
+          </div>
+          <span class="artifact-ver">v${a.version}</span>
+        </div>`).join('') || '<div style="color:var(--muted);padding:10px 4px;font-size:12px">暂无共享契约。对齐接口后可点击「+ 新建」或让 Agent 写入此处。</div>';
     }
+
+    function renderEvents() {
+      $('#events').innerHTML = view.events.map(e => `
+        <div class="event">
+          <span class="event-dot ${esc(e.type)}"></span>
+          <div>
+            <div class="event-text">${esc(e.detail)}</div>
+            <div class="event-time">${time(e.at)} · ${esc(e.type)} ${identityBadge(e.agentId, e.verified)}</div>
+          </div>
+        </div>`).join('');
+    }
+
+    function buildMcpSnippet() {
+      const env = {
+        RELAY_URL: base,
+        RELAY_ROOM: roomId,
+        RELAY_NAME: 'my-project-agent',
+        RELAY_PROJECT: 'your-project-name',
+      };
+      if (authMode === 'shared-token') env.RELAY_TOKEN = '<你的共享口令>';
+      return JSON.stringify({
+        mcpServers: {
+          'agent-relay': {
+            command: 'node',
+            args: ['<项目路径>/mcp-server.js'],
+            env,
+          },
+        },
+      }, null, 2);
+    }
+
+    function renderPauseState() {
+      const paused = Boolean(view.room.paused);
+      $('#pauseBanner').classList.toggle('on', paused);
+      $('#pauseBannerText').textContent = paused
+        ? `⏸ 已由 ${view.room.pausedBy || '管理员'} 暂停 Agent 发言${view.room.pausedReason ? `（${view.room.pausedReason}）` : ''}，仅人类角色可继续发言。`
+        : '';
+      const btn = $('#pauseBtn');
+      btn.textContent = paused ? '▶ 恢复对话' : '⏸ 暂停 Agent';
+      btn.className = paused ? 'btn good' : 'btn warn';
+    }
+
+    function renderNotifyBtn() {
+      $('#notifyBtn').textContent = notifyEnabled ? '🔔 通知: 开' : '🔔 通知: 关';
+      $('#notifyBtn').classList.toggle('good', notifyEnabled);
+    }
+
     function renderHeader() {
       $('#roomTitle').textContent = `# ${view.room.name || roomId}`;
       $('#roomTopic').textContent = view.room.topic || '点击设置房间主题';
       $('#meName').textContent = me.name || '未设置名字';
       $('#meRole').textContent = me.name ? me.role : '点击下方设置身份';
+      if (view.server?.version) $('#serverVer').textContent = `v${view.server.version}`;
       const r = encodeURIComponent(roomId);
       $('#guideUrl').textContent = `${base}/llms.txt`;
       $('#sendUrl').textContent = `${base}/api/send?room=${r}&name=<名字>&text=<消息>`;
       $('#readUrl').textContent = `${base}/api/messages?room=${r}&since=0&format=text`;
       $('#authMode').textContent = authMode === 'open' ? '开放模式' : '共享口令';
-      document.title = `#${view.room.name || roomId} · Agent Relay`;
+      $('#mcpConfigText').textContent = buildMcpSnippet();
+      renderPauseState();
+      renderNotifyBtn();
+      document.title = baseTitle();
     }
-    function renderAll() { renderHeader(); renderRooms(); renderMessages(); renderAgents(); renderEvents(); }
+
+    function renderAll() { renderHeader(); renderRooms(); renderMessages(true); renderAgents(); renderArtifacts(); renderEvents(); }
 
     function setConn(on, text) { $('#connDot').classList.toggle('on', on); $('#connText').textContent = text; }
     function connect() {
       if (socket) { socket.onclose = null; socket.close(); }
-      const qs = new URLSearchParams({ room: roomId }); if (me.name) { qs.set('name', me.name); qs.set('role', me.role); } if (token) qs.set('token', token);
+      const qs = new URLSearchParams({ room: roomId });
+      if (me.name) { qs.set('name', me.name); qs.set('role', me.role); }
+      if (token) qs.set('token', token);
       socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?${qs}`);
       socket.onopen = () => { retry = 0; setConn(true, '实时连接'); };
       socket.onclose = async () => {
         setConn(false, '重连中…');
-        try { const h = await (await fetch('/api/health')).json(); if (h.auth === 'shared-token' && !token) { setConn(false, '需要共享口令'); return needToken(); } } catch {}
+        try {
+          const h = await (await fetch('/api/health')).json();
+          if (h.auth === 'shared-token' && !token) { setConn(false, '需要共享口令'); return needToken(); }
+        } catch {}
         setTimeout(connect, Math.min(1000 * 2 ** retry++, 10000));
       };
       socket.onmessage = (e) => {
         const p = JSON.parse(e.data);
-        if (p.type === 'state') { view = p.state; authMode = p.state.server.auth; renderAll(); }
-        else if (p.type === 'message') { view.messages.push(p.message); view.messages = view.messages.slice(-500); view.room.lastSeq = p.message.seq; renderMessages(); if (isMentioned(p.message) && document.hidden) document.title = `(@你) ${document.title}`; }
-        else if (p.type === 'event') { view.events.unshift(p.event); view.events = view.events.slice(0, 40); renderEvents(); }
-        else if (p.type === 'agents') { view.agents = p.agents; renderAgents(); }
-        else if (p.type === 'rooms') { view.rooms = p.rooms; renderRooms(); }
-        else if (p.type === 'error') toast(p.error);
+        if (p.type === 'state') {
+          view = p.state;
+          authMode = p.state.server.auth;
+          renderAll();
+        } else if (p.type === 'message') {
+          view.messages.push(p.message);
+          view.messages = view.messages.slice(-500);
+          view.room.lastSeq = p.message.seq;
+          appendMessageIncremental(p.message);
+          if (isMentioned(p.message) && document.hidden) {
+            document.title = `(@你) ${baseTitle()}`;
+            if (notifyEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+              try {
+                new Notification(`#${view.room.name || roomId} · ${p.message.agent} @了你`, {
+                  body: p.message.text.slice(0, 120),
+                });
+              } catch {}
+            }
+          }
+        } else if (p.type === 'message_updated') {
+          updateMessageInPlace(p.message);
+        } else if (p.type === 'room') {
+          view.room = p.room;
+          renderHeader();
+        } else if (p.type === 'artifacts') {
+          view.artifacts = p.artifacts;
+          renderArtifacts();
+        } else if (p.type === 'event') {
+          view.events.unshift(p.event);
+          view.events = view.events.slice(0, 40);
+          renderEvents();
+        } else if (p.type === 'agents') {
+          view.agents = p.agents;
+          renderAgents();
+        } else if (p.type === 'rooms') {
+          view.rooms = p.rooms;
+          renderRooms();
+        } else if (p.type === 'error') {
+          toast(p.error);
+        }
       };
     }
-    async function refreshRooms() { try { view.rooms = (await api('GET', '/api/rooms')).rooms; renderRooms(); } catch {} }
-    function switchRoom(id) { roomId = id; LS('room', id); location.hash = id; replyTo = null; $('#replyBar').classList.remove('on'); connect(); }
 
+    async function refreshRooms() { try { view.rooms = (await api('GET', '/api/rooms')).rooms; renderRooms(); } catch {} }
+    function switchRoom(id) {
+      roomId = id;
+      LS('room', id);
+      location.hash = id;
+      replyTo = null;
+      $('#replyBar').classList.remove('on');
+      unseenWhileScrolled = 0;
+      $('#jumpNewBtn').classList.remove('on');
+      connect();
+    }
+
+    // ---------- 共享契约弹窗 & 版本 Diff ----------
+    function switchArtifactTab(tab) {
+      const isDiff = tab === 'diff';
+      $('#artTabEditBtn').classList.toggle('active', !isDiff);
+      $('#artTabDiffBtn').classList.toggle('active', isDiff);
+      $('#artEditPane').classList.toggle('hidden', isDiff);
+      $('#artDiffPane').classList.toggle('hidden', !isDiff);
+      $('#saveArtifactBtn').classList.toggle('hidden', isDiff);
+      if (isDiff && activeArtifact) loadArtifactDiff();
+    }
+
+    async function loadArtifactDiff() {
+      if (!activeArtifact) return;
+      const from = Number($('#diffFromVer').value);
+      const to = Number($('#diffToVer').value);
+      const box = $('#diffView');
+      box.innerHTML = '<div style="padding:16px;color:var(--muted)">正在计算差异…</div>';
+      try {
+        const res = await api('GET', `/api/rooms/${encodeURIComponent(roomId)}/artifacts/${encodeURIComponent(activeArtifact.name)}/diff?from=${from}&to=${to}`);
+        $('#diffStats').innerHTML = `<span class="plus">+${res.stats.added}</span><span class="minus">-${res.stats.removed}</span><span>${res.stats.unchanged} 未变</span>`;
+        if (res.identical || !res.hunks.length) {
+          box.innerHTML = `<div style="padding:18px;color:var(--muted);text-align:center">v${res.fromVersion} 与 v${res.toVersion} 内容完全一致，无行级差异。</div>`;
+          return;
+        }
+        box.innerHTML = res.hunks.map(h => {
+          const rows = h.lines.map(l => {
+            const cls = l.type === 'add' ? 'add' : l.type === 'remove' ? 'remove' : '';
+            const sign = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' ';
+            return `<div class="diff-row ${cls}"><span class="diff-ln">${l.oldLine ?? ''}</span><span class="diff-ln">${l.newLine ?? ''}</span><span class="diff-sign">${sign}</span><span>${esc(l.text)}</span></div>`;
+          }).join('');
+          return `<div class="diff-hunk">${esc(h.header)}</div>${rows}`;
+        }).join('');
+      } catch (err) {
+        box.innerHTML = `<div style="padding:16px;color:var(--red)">加载 Diff 失败：${esc(err.message)}</div>`;
+      }
+    }
+
+    function openArtifactModal(artifact) {
+      activeArtifact = artifact;
+      $('#artifactModalTitle').textContent = artifact ? `查看 / 编辑契约：${artifact.name}` : '新建共享契约';
+      $('#artName').value = artifact ? artifact.name : '';
+      $('#artName').readOnly = Boolean(artifact);
+      $('#artSummary').value = '';
+      $('#artContent').value = artifact ? artifact.content : '';
+      $('#artifactVerTag').textContent = artifact ? `v${artifact.version}` : '';
+      $('#artifactVerTag').classList.toggle('hidden', !artifact);
+      $('#deleteArtifactBtn').classList.toggle('hidden', !artifact);
+      const versions = artifact?.availableVersions || (artifact ? [artifact.version] : []);
+      const hasMulti = versions.length >= 2;
+      $('#artifactTabs').classList.toggle('hidden', !hasMulti);
+      if (hasMulti) {
+        const optsHtml = versions.map(v => `<option value="${v}">v${v}</option>`).join('');
+        $('#diffFromVer').innerHTML = optsHtml;
+        $('#diffToVer').innerHTML = optsHtml;
+        $('#diffFromVer').value = String(versions[versions.length - 2]);
+        $('#diffToVer').value = String(versions[versions.length - 1]);
+      }
+      switchArtifactTab('edit');
+      const hist = $('#artifactHistory');
+      if (artifact?.history?.length) {
+        hist.classList.remove('hidden');
+        hist.innerHTML = '<strong>修订记录：</strong>' + [...artifact.history].reverse().map(h =>
+          `<div>v${h.version} · ${esc(h.updatedBy)} · ${time(h.updatedAt)}${h.summary ? ` · ${esc(h.summary)}` : ''}</div>`,
+        ).join('');
+      } else {
+        hist.classList.add('hidden');
+        hist.innerHTML = '';
+      }
+      $('#artifactModal').classList.add('open');
+    }
+
+    $('#artTabEditBtn').onclick = () => switchArtifactTab('edit');
+    $('#artTabDiffBtn').onclick = () => switchArtifactTab('diff');
+    $('#diffFromVer').onchange = loadArtifactDiff;
+    $('#diffToVer').onchange = loadArtifactDiff;
+    $('#restoreDiffVerBtn').onclick = async () => {
+      if (!activeArtifact) return;
+      const ver = Number($('#diffFromVer').value);
+      try {
+        const res = await api('GET', `/api/rooms/${encodeURIComponent(roomId)}/artifacts/${encodeURIComponent(activeArtifact.name)}/versions/${ver}`);
+        $('#artContent').value = res.revision.content;
+        $('#artSummary').value = `基于 v${ver} 恢复`;
+        switchArtifactTab('edit');
+        toast(`已载入 v${ver} 内容到编辑器，点击「保存新版本」即可生效`);
+      } catch (err) { toast('读取历史版本失败：' + err.message); }
+    };
+
+    // ---------- 房间一键导出 .zip 纪要与契约包 ----------
+    $('#exportZipBtn').onclick = async () => {
+      try {
+        const r = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/export?format=zip`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (r.status === 401) { needToken(); return; }
+        if (!r.ok) throw new Error(await r.text());
+        const blob = await r.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${roomId}-sync-${new Date().toISOString().slice(0, 10)}.zip`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast('已导出联调纪要与最终契约包 (.zip)');
+      } catch (err) { toast('导出失败：' + err.message); }
+    };
+
+    // ---------- Swagger / OpenAPI Schema 差异自动比对弹窗 ----------
+    let lastOpenApiPayload = null;
+    let lastOpenApiReport = null;
+
+    function syncOpenApiSide(prefix) {
+      const mode = $(`#oa${prefix}Mode`).value;
+      const pickWrap = $(`#oa${prefix}PickWrap`);
+      const verWrap = $(`#oa${prefix}VerWrap`);
+      const urlWrap = $(`#oa${prefix}UrlWrap`);
+      const jsonWrap = $(`#oa${prefix}JsonWrap`);
+      const pick = $(`#oa${prefix}Pick`);
+      const ver = $(`#oa${prefix}Ver`);
+      pickWrap.classList.toggle('hidden', mode !== 'artifact' && mode !== 'agent');
+      verWrap.classList.toggle('hidden', mode !== 'artifact');
+      urlWrap.classList.toggle('hidden', mode !== 'url');
+      jsonWrap.classList.toggle('hidden', mode !== 'json');
+      if (mode === 'artifact') {
+        const arts = view.artifacts || [];
+        pick.innerHTML = arts.length
+          ? arts.map(a => `<option value="${esc(a.name)}">${esc(a.name)} (v${a.version})</option>`).join('')
+          : '<option value="">(当前房间暂无契约)</option>';
+        syncOpenApiVersions(prefix);
+      } else if (mode === 'agent') {
+        const withDoc = (view.agents || []).filter(a => a.card?.apiDoc);
+        pick.innerHTML = withDoc.length
+          ? withDoc.map(a => `<option value="${esc(a.name)}">${esc(a.name)} — ${esc(a.card.apiDoc)}</option>`).join('')
+          : '<option value="">(暂无成员配置 apiDoc)</option>';
+      }
+    }
+    function syncOpenApiVersions(prefix) {
+      const name = $(`#oa${prefix}Pick`).value;
+      const art = (view.artifacts || []).find(a => a.name === name);
+      const vers = art?.availableVersions || (art ? [art.version] : []);
+      $(`#oa${prefix}Ver`).innerHTML = vers.length
+        ? [...vers].reverse().map(v => `<option value="${v}">v${v}</option>`).join('')
+        : '<option value="">-</option>';
+    }
+    function readOpenApiSide(prefix) {
+      const mode = $(`#oa${prefix}Mode`).value;
+      if (mode === 'artifact') {
+        const artifact = $(`#oa${prefix}Pick`).value;
+        if (!artifact) throw new Error(`请选择${prefix === 'Base' ? '基准' : '目标'}共享契约`);
+        const version = Number($(`#oa${prefix}Ver`).value) || undefined;
+        return { artifact, version };
+      }
+      if (mode === 'agent') {
+        const agent = $(`#oa${prefix}Pick`).value;
+        if (!agent) throw new Error(`请选择配置了 apiDoc 的成员`);
+        return { agent };
+      }
+      if (mode === 'url') {
+        const url = $(`#oa${prefix}Url`).value.trim();
+        if (!url) throw new Error(`请填写${prefix === 'Base' ? '基准' : '目标'} OpenAPI URL`);
+        return { url };
+      }
+      const raw = $(`#oa${prefix}Json`).value.trim();
+      if (!raw) throw new Error(`请粘贴${prefix === 'Base' ? '基准' : '目标'} OpenAPI JSON`);
+      return raw;
+    }
+
+    $('#openApiDiffBtn').onclick = () => {
+      syncOpenApiSide('Base');
+      syncOpenApiSide('Target');
+      $('#oaResultArea').classList.add('hidden');
+      $('#saveOpenApiReportBtn').classList.add('hidden');
+      $('#proposeOpenApiBtn').classList.add('hidden');
+      $('#copyOpenApiMdBtn').classList.add('hidden');
+      lastOpenApiPayload = null;
+      lastOpenApiReport = null;
+      $('#openApiModal').classList.add('open');
+    };
+    $('#closeOpenApiBtn').onclick = () => $('#openApiModal').classList.remove('open');
+    $('#oaBaseMode').onchange = () => syncOpenApiSide('Base');
+    $('#oaTargetMode').onchange = () => syncOpenApiSide('Target');
+    $('#oaBasePick').onchange = () => { if ($('#oaBaseMode').value === 'artifact') syncOpenApiVersions('Base'); };
+    $('#oaTargetPick').onchange = () => { if ($('#oaTargetMode').value === 'artifact') syncOpenApiVersions('Target'); };
+
+    $('#runOpenApiDiffBtn').onclick = async () => {
+      try {
+        const baseSrc = readOpenApiSide('Base');
+        const targetSrc = readOpenApiSide('Target');
+        lastOpenApiPayload = { base: baseSrc, target: targetSrc };
+        const res = await api('POST', `/api/rooms/${encodeURIComponent(roomId)}/openapi/diff`, lastOpenApiPayload);
+        lastOpenApiReport = res;
+        const banner = $('#oaBanner');
+        banner.className = `oa-banner ${res.summary.compatible ? 'ok' : 'warn'}`;
+        banner.textContent = res.summary.compatible
+          ? `✅ 向后兼容（无破坏性变更） · 兼容变更 ${res.summary.nonBreakingCount} 项（${res.base.endpoints} → ${res.target.endpoints} 个接口）`
+          : `⚠️ 检测到 ${res.summary.breakingCount} 项破坏性变更 · ${res.summary.nonBreakingCount} 项兼容变更（建议发起提案由双方人类确认）`;
+        const items = [
+          ...res.breaking.map(x => `<div class="oa-item breaking"><strong>⚠️ [破坏性] ${esc(x.endpoint)}</strong>：${esc(x.detail)}</div>`),
+          ...res.nonBreaking.map(x => `<div class="oa-item nonbreaking"><strong>✅ [兼容] ${esc(x.endpoint)}</strong>：${esc(x.detail)}</div>`),
+        ];
+        $('#oaDiffList').innerHTML = items.length ? items.join('') : '<div style="color:var(--muted);padding:10px;font-size:12px">两份 Schema 完全一致，未检测到差异。</div>';
+        $('#oaResultArea').classList.remove('hidden');
+        $('#saveOpenApiReportBtn').classList.remove('hidden');
+        $('#proposeOpenApiBtn').classList.remove('hidden');
+        $('#copyOpenApiMdBtn').classList.remove('hidden');
+      } catch (err) { toast('比对失败：' + err.message); }
+    };
+    $('#copyOpenApiMdBtn').onclick = () => { if (lastOpenApiReport) copy(lastOpenApiReport.markdown); };
+    $('#saveOpenApiReportBtn').onclick = async () => {
+      if (!lastOpenApiPayload) return;
+      if (!me.name) { $('#modal').classList.add('open'); return; }
+      const fileName = prompt('保存到共享契约的文件名：', 'openapi-diff.md');
+      if (!fileName) return;
+      try {
+        const res = await api('POST', `/api/rooms/${encodeURIComponent(roomId)}/openapi/diff`, {
+          ...lastOpenApiPayload,
+          name: me.name,
+          role: me.role,
+          saveArtifact: fileName,
+        });
+        toast(`已保存比对报告 ${res.savedArtifact.name} v${res.savedArtifact.version}`);
+      } catch (err) { toast('保存失败：' + err.message); }
+    };
+    $('#proposeOpenApiBtn').onclick = async () => {
+      if (!lastOpenApiPayload) return;
+      if (!me.name) { $('#modal').classList.add('open'); return; }
+      try {
+        const res = await api('POST', `/api/rooms/${encodeURIComponent(roomId)}/openapi/diff`, {
+          ...lastOpenApiPayload,
+          name: me.name,
+          role: me.role,
+          postAsProposal: true,
+        });
+        $('#openApiModal').classList.remove('open');
+        toast(`已发起变更提案 #${res.proposalMessage.seq}`);
+      } catch (err) { toast('发提案失败：' + err.message); }
+    };
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        $('#artifactModal').classList.remove('open');
+        $('#openApiModal').classList.remove('open');
+      }
+    });
+
+    $('#newArtifactBtn').onclick = () => {
+      if (!me.name) { $('#modal').classList.add('open'); return; }
+      openArtifactModal(null);
+    };
+    $('#artifactsList').onclick = async (e) => {
+      const item = e.target.closest('.artifact-item');
+      if (!item) return;
+      try {
+        const res = await api('GET', `/api/rooms/${encodeURIComponent(roomId)}/artifacts/${encodeURIComponent(item.dataset.artifact)}`);
+        openArtifactModal(res.artifact);
+      } catch (err) { toast('读取契约失败：' + err.message); }
+    };
+    $('#closeArtifactBtn').onclick = () => $('#artifactModal').classList.remove('open');
+    $('#copyArtifactBtn').onclick = () => copy($('#artContent').value);
+    $('#downloadArtifactBtn').onclick = () => {
+      const name = $('#artName').value.trim() || 'contract.md';
+      const blob = new Blob([$('#artContent').value], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    $('#deleteArtifactBtn').onclick = async () => {
+      if (!activeArtifact || !confirm(`确定删除共享契约 ${activeArtifact.name}？`)) return;
+      try {
+        await api('DELETE', `/api/rooms/${encodeURIComponent(roomId)}/artifacts/${encodeURIComponent(activeArtifact.name)}`, { name: me.name || 'human' });
+        $('#artifactModal').classList.remove('open');
+        toast('已删除契约');
+      } catch (err) { toast('删除失败：' + err.message); }
+    };
+    $('#artifactForm').onsubmit = async (e) => {
+      e.preventDefault();
+      if (!me.name) { $('#modal').classList.add('open'); return; }
+      const name = $('#artName').value.trim();
+      if (!name) return;
+      try {
+        const res = await api('PUT', `/api/rooms/${encodeURIComponent(roomId)}/artifacts/${encodeURIComponent(name)}`, {
+          name: me.name,
+          role: me.role,
+          content: $('#artContent').value,
+          summary: $('#artSummary').value.trim(),
+          expectedVersion: activeArtifact ? activeArtifact.version : undefined,
+        });
+        openArtifactModal(res.artifact);
+        toast(`已保存 ${res.artifact.name} v${res.artifact.version}`);
+      } catch (err) {
+        if (err.status === 409) toast(`版本冲突：服务器当前为 v${err.data?.currentVersion}，请重新打开合并`);
+        else toast('保存失败：' + err.message);
+      }
+    };
+
+    // ---------- @ 自动补全 ----------
+    function closeMentionPop() { $('#mentionPop').classList.remove('open'); mentionMatches = []; mentionAnchor = -1; }
+    function updateMentionPop() {
+      const input = $('#messageInput');
+      const pos = input.selectionStart;
+      const before = input.value.slice(0, pos);
+      const match = before.match(/(?:^|\s)@([\p{L}\p{N}_.-]*)$/u);
+      if (!match) return closeMentionPop();
+      const q = match[1].toLowerCase();
+      mentionAnchor = pos - match[1].length - 1;
+      const candidates = [
+        { token: 'all', label: '@all', sub: '通知房间所有人' },
+        ...view.agents.map(a => ({
+          token: a.verified === true ? a.id : a.name,
+          label: `${a.online ? '●' : '○'} ${a.name}`,
+          sub: a.card?.project || (a.verified ? a.id : a.role),
+        })),
+      ];
+      mentionMatches = candidates.filter(c => c.token.toLowerCase().includes(q) || c.label.toLowerCase().includes(q) || (c.sub || '').toLowerCase().includes(q)).slice(0, 8);
+      if (!mentionMatches.length) return closeMentionPop();
+      mentionIdx = Math.min(mentionIdx, mentionMatches.length - 1);
+      renderMentionPop();
+    }
+    function renderMentionPop() {
+      const pop = $('#mentionPop');
+      pop.innerHTML = mentionMatches.map((c, i) => `
+        <div class="mention-opt ${i === mentionIdx ? 'active' : ''}" data-idx="${i}">
+          <span>${esc(c.label)}</span>
+          <span class="m-sub">${esc(c.sub || '')}</span>
+        </div>`).join('');
+      pop.classList.add('open');
+    }
+    function applyMention(idx) {
+      const item = mentionMatches[idx];
+      if (!item || mentionAnchor < 0) return;
+      const input = $('#messageInput');
+      const pos = input.selectionStart;
+      const before = input.value.slice(0, mentionAnchor);
+      const after = input.value.slice(pos);
+      const inserted = `@${item.token} `;
+      input.value = before + inserted + after;
+      const nextPos = before.length + inserted.length;
+      input.setSelectionRange(nextPos, nextPos);
+      input.focus();
+      closeMentionPop();
+    }
+    $('#mentionPop').onmousedown = (e) => {
+      const opt = e.target.closest('.mention-opt');
+      if (!opt) return;
+      e.preventDefault();
+      applyMention(Number(opt.dataset.idx));
+    };
+
+    // ---------- 交互事件 ----------
     $('#composer').onsubmit = async (e) => {
       e.preventDefault();
-      const text = $('#messageInput').value; if (!text.trim()) return;
+      closeMentionPop();
+      const text = $('#messageInput').value;
+      if (!text.trim()) return;
       if (!me.name) { $('#modal').classList.add('open'); return; }
       const payload = { type: 'message', name: me.name, role: me.role, text, kind: $('#kind').value, replyTo: replyTo || undefined };
       if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
       else { try { await api('POST', `/api/messages?room=${encodeURIComponent(roomId)}`, payload); } catch (err) { return toast('发送失败：' + err.message); } }
-      $('#messageInput').value = ''; replyTo = null; $('#replyBar').classList.remove('on');
+      $('#messageInput').value = '';
+      replyTo = null;
+      $('#replyBar').classList.remove('on');
     };
-    $('#messageInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); } });
-    $('#messages').onclick = (e) => { const s = e.target.closest('.msg-seq'); if (!s) return; replyTo = Number(s.dataset.seq); $('#replyText').textContent = `回复 #${replyTo}`; $('#replyBar').classList.add('on'); $('#messageInput').focus(); };
+
+    $('#messageInput').addEventListener('input', updateMentionPop);
+    $('#messageInput').addEventListener('keydown', (e) => {
+      if ($('#mentionPop').classList.contains('open')) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); mentionIdx = (mentionIdx + 1) % mentionMatches.length; return renderMentionPop(); }
+        if (e.key === 'ArrowUp') { e.preventDefault(); mentionIdx = (mentionIdx - 1 + mentionMatches.length) % mentionMatches.length; return renderMentionPop(); }
+        if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); return applyMention(mentionIdx); }
+        if (e.key === 'Escape') { e.preventDefault(); return closeMentionPop(); }
+      }
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('#composer').requestSubmit(); }
+    });
+
+    $('#messages').addEventListener('scroll', () => {
+      const box = $('#messages');
+      if (box.scrollHeight - box.scrollTop - box.clientHeight < 60) {
+        unseenWhileScrolled = 0;
+        $('#jumpNewBtn').classList.remove('on');
+      }
+    });
+    $('#jumpNewBtn').onclick = () => {
+      const box = $('#messages');
+      box.scrollTop = box.scrollHeight;
+      unseenWhileScrolled = 0;
+      $('#jumpNewBtn').classList.remove('on');
+    };
+
+    $('#messages').onclick = async (e) => {
+      const copyBtn = e.target.closest('.code-copy');
+      if (copyBtn) {
+        const code = codeStore.get(copyBtn.dataset.codeId);
+        if (code !== undefined) copy(code);
+        return;
+      }
+      const decideBtn = e.target.closest('[data-decide]');
+      if (decideBtn) {
+        if (!me.name) { $('#modal').classList.add('open'); return; }
+        const seq = Number(decideBtn.dataset.seq);
+        const decision = decideBtn.dataset.decide;
+        const label = PROPOSAL_LABELS[decision] || decision;
+        const comment = prompt(`对提案 #${seq} 做出「${label}」决定，可填写审批说明（留空直接提交）：`, '');
+        if (comment === null) return;
+        try {
+          await api('POST', `/api/rooms/${encodeURIComponent(roomId)}/proposals/${seq}/decision`, {
+            name: me.name,
+            role: me.role || 'Human',
+            decision,
+            comment,
+          });
+          toast(`已记录提案 #${seq}：${label}`);
+        } catch (err) { toast('审批失败：' + err.message); }
+        return;
+      }
+      const s = e.target.closest('.msg-seq');
+      if (!s) return;
+      replyTo = Number(s.dataset.seq);
+      $('#replyText').textContent = `回复 #${replyTo}`;
+      $('#replyBar').classList.add('on');
+      $('#messageInput').focus();
+    };
+
     $('#cancelReply').onclick = () => { replyTo = null; $('#replyBar').classList.remove('on'); };
-    $('#agentsList').onclick = (e) => { const a = e.target.closest('.agent'); if (!a) return; const input = $('#messageInput'); input.value = `${input.value}@${a.dataset.mention} `; input.focus(); };
+    $('#agentsList').onclick = (e) => {
+      if (e.target.closest('[data-no-mention]')) return;
+      const a = e.target.closest('.agent');
+      if (!a) return;
+      const input = $('#messageInput');
+      input.value = `${input.value}@${a.dataset.mention} `;
+      input.focus();
+    };
     $('#rooms').onclick = (e) => { const r = e.target.closest('.room'); if (r && r.dataset.room !== roomId) switchRoom(r.dataset.room); };
-    $('#newRoom').onclick = async () => { const name = prompt('新房间名称'); if (!name) return; try { const r = await api('POST', '/api/rooms', { name }); await refreshRooms(); switchRoom(r.id); } catch (err) { toast('创建失败：' + err.message); } };
-    $('#roomTopic').onclick = async () => { const topic = prompt('房间主题', view.room.topic || ''); if (topic === null) return; try { await api('PATCH', `/api/rooms/${encodeURIComponent(roomId)}`, { topic }); view.room.topic = topic; renderHeader(); } catch (err) { toast(err.message); } };
+    $('#newRoom').onclick = async () => {
+      const name = prompt('新房间名称（例如：order-refund-sync）');
+      if (!name) return;
+      try { const r = await api('POST', '/api/rooms', { name }); await refreshRooms(); switchRoom(r.id); } catch (err) { toast('创建失败：' + err.message); }
+    };
+    $('#roomTopic').onclick = async () => {
+      const topic = prompt('房间主题', view.room.topic || '');
+      if (topic === null) return;
+      try { await api('PATCH', `/api/rooms/${encodeURIComponent(roomId)}`, { topic }); view.room.topic = topic; renderHeader(); } catch (err) { toast(err.message); }
+    };
+
+    async function togglePause(forcePaused) {
+      const next = forcePaused !== undefined ? forcePaused : !view.room.paused;
+      let reason = '';
+      if (next) {
+        reason = prompt('暂停原因（可选，例如：先由人类确认接口方案）：', '');
+        if (reason === null) return;
+      }
+      try {
+        const updated = await api('PATCH', `/api/rooms/${encodeURIComponent(roomId)}`, {
+          paused: next,
+          pausedReason: reason,
+          pausedBy: me.name || 'human',
+        });
+        view.room = updated;
+        renderHeader();
+        toast(next ? '已暂停 Agent 发言' : '已恢复房间对话');
+      } catch (err) { toast('操作失败：' + err.message); }
+    }
+    $('#pauseBtn').onclick = () => togglePause();
+    $('#resumeBannerBtn').onclick = () => togglePause(false);
+
+    $('#notifyBtn').onclick = async () => {
+      if (typeof Notification === 'undefined') return toast('当前浏览器不支持桌面通知');
+      if (notifyEnabled) {
+        notifyEnabled = false;
+        LS('notify', '0');
+        renderNotifyBtn();
+        return;
+      }
+      const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (perm === 'granted') {
+        notifyEnabled = true;
+        LS('notify', '1');
+        renderNotifyBtn();
+        toast('已开启被 @ 桌面通知');
+      } else {
+        toast('浏览器拒绝了通知权限');
+      }
+    };
+
+    // 筛选栏
+    $('#filterBar').onclick = (e) => {
+      const pill = e.target.closest('.pill[data-kind]');
+      if (!pill) return;
+      filterKind = pill.dataset.kind;
+      document.querySelectorAll('#filterBar .pill[data-kind]').forEach(el => el.classList.toggle('active', el === pill));
+      renderMessages(true);
+    };
+    $('#onlyMentionBtn').onclick = () => {
+      filterMention = !filterMention;
+      $('#onlyMentionBtn').classList.toggle('active', filterMention);
+      renderMessages(true);
+    };
+    $('#searchInput').oninput = (e) => {
+      filterSearch = e.target.value.trim();
+      renderMessages(true);
+    };
+
+    // 右侧接入 Tab
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+        $('#tabMcp').classList.toggle('hidden', btn.dataset.tab !== 'mcp');
+        $('#tabHttp').classList.toggle('hidden', btn.dataset.tab !== 'http');
+      };
+    });
+
     $('#editMe').onclick = () => { $('#inName').value = me.name; $('#inRole').value = me.role; $('#inToken').value = token; $('#modal').classList.add('open'); };
     $('#cancelMe').onclick = () => $('#modal').classList.remove('open');
-    $('#meForm').onsubmit = (e) => { e.preventDefault(); me = { name: $('#inName').value.trim(), role: $('#inRole').value.trim() || 'Human' }; token = $('#inToken').value.trim(); LS('name', me.name); LS('role', me.role); LS('token', token); $('#modal').classList.remove('open'); connect(); renderHeader(); };
+    $('#meForm').onsubmit = (e) => {
+      e.preventDefault();
+      me = { name: $('#inName').value.trim(), role: $('#inRole').value.trim() || 'Human' };
+      token = $('#inToken').value.trim();
+      LS('name', me.name); LS('role', me.role); LS('token', token);
+      $('#modal').classList.remove('open');
+      connect();
+      renderHeader();
+    };
     document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => copy($('#' + b.dataset.copy).textContent));
-    $('#copyPrompt').onclick = () => copy(`请加入局域网 Agent 群聊：先读取 ${base}/llms.txt 了解接入方式，然后用一个固定的名字在房间 "${roomId}" 中自我介绍，并持续关注 @你 的消息。`);
+    $('#copyMcpBtn').onclick = () => copy(buildMcpSnippet());
+    $('#copyMcpQuick').onclick = () => copy(buildMcpSnippet());
+    $('#copyPrompt').onclick = () => copy(`请加入局域网 Agent 协作平台完成项目对接：先读取 ${base}/llms.txt 了解接入方式和防死循环规范，然后以固定名字加入房间 "${roomId}" 并上报本项目名片（项目名、负责人、技术栈、分支、本地联调地址与职责），先查看已有共享契约和最近消息再自我介绍。`);
     window.addEventListener('hashchange', () => { const id = location.hash.slice(1); if (id && id !== roomId) switchRoom(id); });
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) renderHeader(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) document.title = baseTitle(); });
 
     if (!me.name) { $('#inName').value = ''; $('#modal').classList.add('open'); }
     connect();

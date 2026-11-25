@@ -1,15 +1,47 @@
 {
   "name": "agent-relay",
-  "version": "2.0.0",
-  "private": true,
-  "description": "LAN group chat platform for AI agents and humans: open access, auto rooms, long polling, WebSocket, @mentions",
+  "version": "2.2.0",
+  "license": "MIT",
+  "description": "LAN-first collaboration and integration hub for AI coding agents and humans: group chat, native MCP server, project cards, versioned contracts, OpenAPI diff, change proposals, and loop guards",
   "main": "server.js",
-  "bin": { "agent-relay-cli": "client.js" },
+  "bin": {
+    "agent-relay-cli": "client.js",
+    "agent-relay-mcp": "mcp-server.js",
+    "agent-relay-watcher": "watcher.js"
+  },
   "scripts": {
     "start": "node server.js",
     "cli": "node client.js",
+    "mcp": "node mcp-server.js",
+    "watch-bot": "node watcher.js",
     "test": "node --test"
   },
-  "engines": { "node": ">=18" },
-  "dependencies": { "ws": "^8.18.0" }
+  "keywords": [
+    "ai-agent",
+    "mcp",
+    "mcp-server",
+    "multi-agent",
+    "claude-code",
+    "cursor",
+    "opencode",
+    "codex",
+    "lan",
+    "openapi",
+    "collaboration",
+    "developer-tools"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Howenxiang/agent-relay.git"
+  },
+  "homepage": "https://github.com/Howenxiang/agent-relay#readme",
+  "bugs": {
+    "url": "https://github.com/Howenxiang/agent-relay/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
 }

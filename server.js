@@ -4,10 +4,15 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const WebSocket = require('ws');
+const { diffText } = require('./lib/diff');
+const { diffOpenApi } = require('./lib/openapi-diff');
+const { buildSyncReportMarkdown, buildRoomExportZip } = require('./lib/export');
+const { startDiscoveryResponder, SERVICE_TYPE } = require('./lib/discovery');
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
-// 留空 = 开放模式（局域网内任何人/Agent 无需 Token 即可使用）；设置后所有 API 需携带该共享口令
+const INSTANCE_ID = crypto.randomUUID();
+// 留空 = 开放模式（局域网内任何人/Agent 无需 Token 即可使用）；设置后所有受保护 API 需携带该共享口令
 const SHARED_TOKEN = process.env.AGENT_RELAY_TOKEN || '';
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -15,17 +20,27 @@ const DATA_DIR = path.resolve(process.env.AGENT_RELAY_DATA || path.join(ROOT, 'd
 const DATA_FILE = path.join(DATA_DIR, 'relay.json');
 const GUIDE_FILE = path.join(ROOT, 'AGENT_ONBOARDING_PROMPT.md');
 
+const VERSION = '2.2.0';
 const MAX_TEXT = 20000;
+const MAX_META = 64 * 1024;
+const MAX_CARD = 4096;
+const MAX_ARTIFACT_BYTES = 100 * 1024;
+const MAX_ARTIFACTS_PER_ROOM = 50;
+const MAX_ARTIFACT_HISTORY = 10;
 const MAX_MESSAGES = 5000;
 const MAX_EVENTS = 100;
 const MAX_BODY = 1024 * 1024;
 const ONLINE_MS = 90 * 1000;
 const MAX_WAIT_SECONDS = 60;
+const RATE_LIMIT_MAX = process.env.AGENT_RELAY_RATE_LIMIT !== undefined
+  ? Math.max(0, Number(process.env.AGENT_RELAY_RATE_LIMIT) || 0)
+  : 20;
+const RATE_LIMIT_WINDOW_MS = Math.max(1000, (Number(process.env.AGENT_RELAY_RATE_WINDOW_SEC) || 30) * 1000);
 const COLORS = ['#6C63FF', '#4F8DFD', '#2EC4B6', '#5FE1AB', '#F0C36D', '#FF8A65', '#E86AF0', '#76B5FF', '#A3E635', '#F472B6'];
 
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
-const httpError = (status, message) => Object.assign(new Error(message), { status });
+const httpError = (status, message, extra) => Object.assign(new Error(message), { status }, extra);
 const within = (dir, file) => {
   const relative = path.relative(dir, file);
   return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
@@ -46,15 +61,29 @@ if (!store || typeof store !== 'object' || Array.isArray(store)) throw new Error
 if (!Array.isArray(store.rooms)) store.rooms = [];
 if (!Object.hasOwn(store, 'identities')) store.identities = {};
 else if (!store.identities || typeof store.identities !== 'object' || Array.isArray(store.identities)) throw new Error('Invalid identities in relay data');
+if (!Object.hasOwn(store, 'agentCards') || !store.agentCards || typeof store.agentCards !== 'object' || Array.isArray(store.agentCards)) {
+  store.agentCards = {};
+}
 for (const room of store.rooms) normalizeRoom(room);
 if (!store.rooms.some(r => r.id === 'general')) store.rooms.unshift(normalizeRoom({ id: 'general', name: '大厅 General' }));
 
 let persistTimer = null;
 let persistRetryMs = 0;
+function renameAtomic(tmp, target) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      fs.renameSync(tmp, target);
+      return;
+    } catch (error) {
+      if ((error.code === 'EPERM' || error.code === 'EBUSY') && attempt < 2) continue;
+      throw error;
+    }
+  }
+}
 function persistNow() {
   const tmp = `${DATA_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
-  fs.renameSync(tmp, DATA_FILE);
+  fs.writeFileSync(tmp, JSON.stringify(store), { mode: 0o600 });
+  renameAtomic(tmp, DATA_FILE);
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = null;
   persistRetryMs = 0;
@@ -73,6 +102,10 @@ function persist() {
   if (persistTimer) return;
   persistTimer = setTimeout(persistPending, 200);
 }
+function persistImmediate() {
+  try { persistNow(); }
+  catch { retryPersistence(); }
+}
 function requireWritable() {
   if (persistRetryMs) throw httpError(503, 'Relay storage temporarily unavailable');
 }
@@ -82,8 +115,13 @@ function normalizeRoom(room) {
   room.name = room.name || room.id;
   room.topic = room.topic || '';
   room.createdAt = room.createdAt || now();
+  room.paused = Boolean(room.paused);
+  room.pausedReason = typeof room.pausedReason === 'string' ? room.pausedReason : '';
+  room.pausedBy = typeof room.pausedBy === 'string' ? room.pausedBy : '';
+  room.pausedAt = room.pausedAt || null;
   room.messages = Array.isArray(room.messages) ? room.messages : [];
   room.events = Array.isArray(room.events) ? room.events : [];
+  room.artifacts = room.artifacts && typeof room.artifacts === 'object' && !Array.isArray(room.artifacts) ? room.artifacts : {};
   room.seq = Number(room.seq) || 0;
   for (const m of room.messages) {
     if (!m.seq) m.seq = ++room.seq;
@@ -101,22 +139,105 @@ function cleanName(value, fallback = 'anonymous') {
   const name = String(value || '').trim().replace(/\s+/g, ' ').slice(0, 40);
   return name || fallback;
 }
+function cleanArtifactName(raw) {
+  const name = String(raw || '').trim();
+  if (!name || name.length > 80 || name.startsWith('.') || name.includes('..') || !/^[\p{L}\p{N}._-]+$/u.test(name)) {
+    throw httpError(400, 'Invalid artifact name (use letters, numbers, ".", "_", "-", max 80 chars)');
+  }
+  return name;
+}
+function inferContentType(filename) {
+  const ext = path.extname(filename).toLowerCase();
+  const map = {
+    '.md': 'text/markdown',
+    '.markdown': 'text/markdown',
+    '.json': 'application/json',
+    '.ts': 'text/typescript',
+    '.tsx': 'text/typescript',
+    '.js': 'text/javascript',
+    '.mjs': 'text/javascript',
+    '.yaml': 'text/yaml',
+    '.yml': 'text/yaml',
+    '.sql': 'text/sql',
+    '.proto': 'text/plain',
+    '.graphql': 'text/plain',
+    '.http': 'text/plain',
+    '.txt': 'text/plain',
+  };
+  return map[ext] || 'text/markdown';
+}
 function colorFor(name) {
   const hash = crypto.createHash('md5').update(name.toLowerCase()).digest();
   return COLORS[hash[0] % COLORS.length];
 }
 function parseMentions(text) {
   const set = new Set();
-  for (const match of String(text).matchAll(/@([\p{L}\p{N}_.-]+)/gu)) set.add(match[1].toLowerCase());
+  for (const match of String(text).matchAll(/@([\p{L}\p{N}_.-]+)/gu)) {
+    const token = match[1].replace(/[.,:;!?]+$/g, '').toLowerCase();
+    if (token) set.add(token);
+  }
   return [...set];
 }
 function toList(value) {
   if (!value) return [];
-  return (Array.isArray(value) ? value : String(value).split(',')).map(v => String(v).trim().replace(/^@/, '').toLowerCase()).filter(Boolean);
+  return (Array.isArray(value) ? value : String(value).split(','))
+    .map(v => String(v).trim().replace(/^@/, '').replace(/[.,:;!?]+$/g, '').toLowerCase())
+    .filter(Boolean);
+}
+function safeHttpUrl(value, maxLen = 200) {
+  const raw = String(value || '').trim().slice(0, maxLen);
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw httpError(400, 'Card URLs must use http:// or https://');
+    }
+    return raw;
+  } catch (error) {
+    if (error.status) throw error;
+    throw httpError(400, 'Invalid URL in agent card');
+  }
+}
+function sanitizeCard(raw) {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) throw httpError(400, 'card must be a JSON object');
+  const card = {};
+  const str = (key, max) => {
+    if (raw[key] === undefined || raw[key] === null) return;
+    const val = String(raw[key]).trim().slice(0, max);
+    if (val) card[key] = val;
+  };
+  str('project', 80);
+  str('owner', 40);
+  str('stack', 120);
+  str('repo', 120);
+  str('branch', 80);
+  str('summary', 300);
+  if (raw.localEndpoint !== undefined && raw.localEndpoint !== null && String(raw.localEndpoint).trim()) {
+    card.localEndpoint = safeHttpUrl(raw.localEndpoint, 200);
+  }
+  if (raw.apiDoc !== undefined && raw.apiDoc !== null && String(raw.apiDoc).trim()) {
+    card.apiDoc = safeHttpUrl(raw.apiDoc, 200);
+  }
+  if (raw.capabilities !== undefined && raw.capabilities !== null) {
+    const list = (Array.isArray(raw.capabilities) ? raw.capabilities : String(raw.capabilities).split(','))
+      .map(item => String(item).trim().slice(0, 32))
+      .filter(Boolean)
+      .slice(0, 10);
+    if (list.length) card.capabilities = [...new Set(list)];
+  }
+  if (Object.keys(card).length === 0) return null;
+  if (JSON.stringify(card).length > MAX_CARD) throw httpError(400, 'Agent card too large');
+  return card;
 }
 function localAddresses() {
   const list = [];
-  for (const group of Object.values(os.networkInterfaces())) for (const item of group || []) if (item.family === 'IPv4' && !item.internal) list.push(item.address);
+  for (const group of Object.values(os.networkInterfaces())) {
+    for (const item of group || []) {
+      if (item.family === 'IPv4' && !item.internal) list.push(item.address);
+    }
+  }
   const rank = (ip) => /^192\.168\./.test(ip) ? 0 : /^10\./.test(ip) ? 1 : /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ? 2 : 3;
   list.sort((a, b) => rank(a) - rank(b));
   return list.length ? list : ['localhost'];
@@ -127,12 +248,16 @@ function fmtTime(iso) { return new Date(iso).toLocaleTimeString('zh-CN', { hour1
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Relay-Token, X-Agent-Id, X-Agent-Key'
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Relay-Token, X-Agent-Id, X-Agent-Key',
 };
-function send(res, status, body, type = 'application/json') {
+function send(res, status, body, type = 'application/json', extraHeaders = {}) {
   const text = type === 'application/json' ? JSON.stringify(body) : String(body);
-  res.writeHead(status, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', ...CORS });
+  res.writeHead(status, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-store', ...CORS, ...extraHeaders });
   res.end(text);
+}
+function sendBinary(res, status, buf, type = 'application/octet-stream', extraHeaders = {}) {
+  res.writeHead(status, { 'Content-Type': type, 'Content-Length': buf.length, 'Cache-Control': 'no-store', ...CORS, ...extraHeaders });
+  res.end(buf);
 }
 const contentType = (req) => (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
 // 保留 `[INFO]` 等旧版纯文本，但疑似凭据帧不能降级为聊天内容。
@@ -145,7 +270,13 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     let data = '';
     req.setEncoding('utf8');
-    req.on('data', chunk => { data += chunk; if (data.length > MAX_BODY) { reject(Object.assign(new Error('Body too large'), { status: 413 })); req.destroy(); } });
+    req.on('data', chunk => {
+      data += chunk;
+      if (data.length > MAX_BODY) {
+        reject(Object.assign(new Error('Body too large'), { status: 413 }));
+        req.destroy();
+      }
+    });
     req.on('end', () => {
       if (!data) return resolve({});
       const type = contentType(req);
@@ -233,7 +364,17 @@ function httpWriter(req, url, data, message, input) {
   const identity = hasHeaders ? authenticateIdentity(headerId, headerKey) : optionalIdentity(ids[0], data.agentKey);
   if (identity && req.method === 'GET') throw httpError(400, 'Use POST to send as a registered Agent');
   const name = input.name || url.searchParams.get('name') || (message ? input.agent || input.from : undefined);
-  return { identity, info: { agentId: ids[0], name, role: input.role, color: input.color, status: message ? undefined : input.status } };
+  return {
+    identity,
+    info: {
+      agentId: ids[0],
+      name,
+      role: input.role,
+      color: input.color,
+      status: message ? undefined : input.status,
+      card: input.card,
+    },
+  };
 }
 
 // ---------- 房间 / Agent ----------
@@ -250,8 +391,223 @@ function getRoom(raw, create = true) {
   }
   return room;
 }
+function requireExistingRoom(raw, allowCreate = false) {
+  const id = slug(raw) || 'general';
+  const room = getRoom(raw, allowCreate);
+  if (!room) {
+    throw httpError(404, `Room "${id}" not found`, {
+      payload: {
+        error: `Room "${id}" not found`,
+        room: id,
+        availableRooms: store.rooms.map(r => r.id),
+        hint: '请检查房间名，或通过 POST /api/rooms / POST /api/join 创建房间（也可传 ?create=1 自动建房）',
+      },
+    });
+  }
+  return room;
+}
+function publicRoom(r) {
+  return {
+    id: r.id,
+    name: r.name,
+    topic: r.topic,
+    lastSeq: r.seq,
+    paused: Boolean(r.paused),
+    pausedReason: r.pausedReason || '',
+    pausedBy: r.pausedBy || '',
+    pausedAt: r.pausedAt || null,
+  };
+}
+function artifactRevisions(a) {
+  if (Array.isArray(a.revisions) && a.revisions.length) return a.revisions;
+  return [{
+    version: a.version,
+    content: a.content,
+    title: a.title,
+    summary: a.summary,
+    updatedBy: a.updatedBy,
+    updatedById: a.updatedById,
+    verified: a.verified,
+    size: a.size,
+    updatedAt: a.updatedAt,
+  }];
+}
+function publicArtifact(a) {
+  const revs = artifactRevisions(a);
+  const { revisions, ...rest } = a;
+  return { ...rest, availableVersions: revs.map(r => r.version) };
+}
+function artifactSummary(a) {
+  return {
+    name: a.name,
+    title: a.title,
+    contentType: a.contentType,
+    version: a.version,
+    availableVersions: artifactRevisions(a).map(r => r.version),
+    summary: a.summary,
+    size: a.size,
+    updatedBy: a.updatedBy,
+    updatedById: a.updatedById,
+    verified: a.verified,
+    updatedAt: a.updatedAt,
+  };
+}
+function artifactList(room) {
+  return Object.values(room.artifacts || {})
+    .map(artifactSummary)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+}
+function saveArtifact(room, name, data, getAgent) {
+  if (typeof data.content !== 'string') throw httpError(400, 'content string is required');
+  if (Buffer.byteLength(data.content, 'utf8') > MAX_ARTIFACT_BYTES) {
+    throw httpError(413, `Artifact content exceeds ${MAX_ARTIFACT_BYTES} bytes`);
+  }
+  const existing = Object.hasOwn(room.artifacts, name) ? room.artifacts[name] : null;
+  if (!existing && Object.keys(room.artifacts).length >= MAX_ARTIFACTS_PER_ROOM) {
+    throw httpError(400, `Room artifact limit reached (${MAX_ARTIFACTS_PER_ROOM})`);
+  }
+  if (data.expectedVersion !== undefined && data.expectedVersion !== null && data.expectedVersion !== '') {
+    const expected = Number(data.expectedVersion);
+    const current = existing ? existing.version : 0;
+    if (!Number.isInteger(expected) || expected !== current) {
+      throw httpError(409, `Artifact version conflict: expected v${expected}, current is v${current}`, {
+        payload: {
+          error: `Artifact version conflict: expected v${expected}, current is v${current}`,
+          currentVersion: current,
+          artifact: existing ? publicArtifact(existing) : null,
+        },
+      });
+    }
+  }
+  const agent = typeof getAgent === 'function' ? getAgent() : getAgent;
+  const version = (existing ? existing.version : 0) + 1;
+  const updatedAt = now();
+  const summary = String(data.summary || '').trim().slice(0, 200);
+  const title = String(data.title || existing?.title || name).trim().slice(0, 120) || name;
+  const size = Buffer.byteLength(data.content, 'utf8');
+  const historyEntry = {
+    version,
+    updatedBy: agent.name,
+    updatedById: agent.id,
+    verified: agent.verified,
+    summary,
+    size,
+    updatedAt,
+  };
+  const revisionEntry = { ...historyEntry, title, content: data.content };
+  const history = existing && Array.isArray(existing.history)
+    ? [...existing.history, historyEntry].slice(-MAX_ARTIFACT_HISTORY)
+    : [historyEntry];
+  const prevRevisions = existing ? artifactRevisions(existing) : [];
+  const revisions = [...prevRevisions, revisionEntry].slice(-MAX_ARTIFACT_HISTORY);
+
+  const artifact = {
+    name,
+    title,
+    contentType: String(data.contentType || existing?.contentType || inferContentType(name)).trim().slice(0, 60),
+    content: data.content,
+    version,
+    summary,
+    size,
+    updatedBy: agent.name,
+    updatedById: agent.id,
+    verified: agent.verified,
+    createdAt: existing?.createdAt || updatedAt,
+    updatedAt,
+    history,
+    revisions,
+  };
+  room.artifacts[name] = artifact;
+  persistImmediate();
+  addEvent(room, 'artifact', `${agent.name} ${existing ? '更新' : '创建'}了契约 ${name} (v${version})${summary ? `：${summary}` : ''}`, agent);
+  broadcast(room.id, { type: 'artifacts', artifacts: artifactList(room) });
+  broadcastAll({ type: 'rooms', rooms: roomList() });
+  if (data.announce === 'message') {
+    postMessage(
+      room,
+      {
+        text: `📄 共享契约 \`${name}\` 已更新至 **v${version}**${summary ? `：${summary}` : ''}`,
+        kind: 'result',
+        to: data.to,
+      },
+      () => agent,
+    );
+  }
+  return { artifact, existed: Boolean(existing) };
+}
+async function fetchOpenApiJson(rawUrl) {
+  const safe = safeHttpUrl(rawUrl, 500);
+  let res;
+  try {
+    res = await fetch(safe, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(8_000),
+    });
+  } catch (error) {
+    throw httpError(502, `无法拉取 OpenAPI 文档 (${safe}): ${error.message}`);
+  }
+  if (!res.ok) throw httpError(502, `拉取 OpenAPI 文档失败 (${safe}): HTTP ${res.status}`);
+  const text = await res.text();
+  if (text.length > 2 * 1024 * 1024) throw httpError(413, 'Remote OpenAPI document exceeds 2MB limit');
+  try { return JSON.parse(text); } catch {
+    throw httpError(400, `远端地址未返回合法 JSON (${safe})`);
+  }
+}
+async function resolveOpenApiSource(source, room, fallbackLabel) {
+  if (source === undefined || source === null) throw httpError(400, `${fallbackLabel} source is required`);
+  if (typeof source === 'string') {
+    const trimmed = source.trim();
+    if (/^https?:\/\//i.test(trimmed)) {
+      return { spec: await fetchOpenApiJson(trimmed), label: trimmed };
+    }
+    try { return { spec: JSON.parse(trimmed), label: fallbackLabel }; }
+    catch { throw httpError(400, `${fallbackLabel} 不是合法 JSON 或 URL`); }
+  }
+  if (typeof source !== 'object' || Array.isArray(source)) {
+    throw httpError(400, `${fallbackLabel} 必须是 OpenAPI 对象、URL 或来源描述符`);
+  }
+  if (source.artifact) {
+    if (!room) throw httpError(400, '按 artifact 比对时必须指定房间');
+    const name = cleanArtifactName(source.artifact);
+    const art = Object.hasOwn(room.artifacts, name) ? room.artifacts[name] : null;
+    if (!art) throw httpError(404, `Artifact "${name}" not found in room "${room.id}"`);
+    let content = art.content;
+    let ver = art.version;
+    if (source.version !== undefined && source.version !== null && source.version !== '') {
+      ver = Number(source.version);
+      const rev = artifactRevisions(art).find(r => r.version === ver);
+      if (!rev) throw httpError(404, `Artifact "${name}" version v${ver} not found`);
+      content = rev.content;
+    }
+    try { return { spec: JSON.parse(content), label: `${name}@v${ver}` }; }
+    catch { throw httpError(400, `契约 ${name}@v${ver} 不是合法的 OpenAPI JSON`); }
+  }
+  if (source.agent) {
+    if (!room) throw httpError(400, '按成员名片比对时必须指定房间');
+    const needle = String(source.agent).trim().toLowerCase();
+    const member = agentsIn(room.id).find(a => a.id.toLowerCase() === needle || a.name.toLowerCase() === needle);
+    if (!member) throw httpError(404, `Room "${room.id}" 中未找到成员 "${source.agent}"`);
+    if (!member.card?.apiDoc) throw httpError(400, `成员 "${member.name}" 的项目名片未配置 apiDoc 地址`);
+    return { spec: await fetchOpenApiJson(member.card.apiDoc), label: `${member.name} (${member.card.apiDoc})` };
+  }
+  if (source.url) {
+    return { spec: await fetchOpenApiJson(source.url), label: source.label || source.url };
+  }
+  return { spec: source, label: fallbackLabel };
+}
 function roomList() {
-  return store.rooms.map(r => ({ id: r.id, name: r.name, topic: r.topic, messageCount: r.messages.length, lastSeq: r.seq, lastMessageAt: r.messages.at(-1)?.at || null, online: agentsIn(r.id).filter(a => a.online).length }));
+  return store.rooms.map(r => ({
+    id: r.id,
+    name: r.name,
+    topic: r.topic,
+    paused: Boolean(r.paused),
+    artifactCount: Object.keys(r.artifacts || {}).length,
+    messageCount: r.messages.length,
+    lastSeq: r.seq,
+    lastMessageAt: r.messages.at(-1)?.at || null,
+    online: agentsIn(r.id).filter(a => a.online).length,
+  }));
 }
 
 const agents = new Map();
@@ -259,10 +615,28 @@ const guestPresenceKey = (roomId, name) => `guest:${roomId}:${name.toLowerCase()
 const verifiedPresenceKey = (roomId, id) => `verified:${roomId}:${id}`;
 const presenceKey = (a) => a.verified ? verifiedPresenceKey(a.roomId, a.id) : guestPresenceKey(a.roomId, a.name);
 function publicAgent(a) {
-  return { id: a.id, verified: a.verified, name: a.name, role: a.role, color: a.color, status: a.status, roomId: a.roomId, online: isOnline(a), lastSeen: a.lastSeen, joinedAt: a.joinedAt };
+  const out = {
+    id: a.id,
+    verified: a.verified,
+    name: a.name,
+    role: a.role,
+    color: a.color,
+    status: a.status,
+    roomId: a.roomId,
+    online: isOnline(a),
+    lastSeen: a.lastSeen,
+    joinedAt: a.joinedAt,
+  };
+  if (a.card) out.card = a.card;
+  return out;
 }
 function isOnline(a) { return a.sockets > 0 || Date.now() - Date.parse(a.lastSeen) < ONLINE_MS; }
-function agentsIn(roomId) { return [...agents.values()].filter(a => a.roomId === roomId).map(publicAgent).sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name)); }
+function agentsIn(roomId) {
+  return [...agents.values()]
+    .filter(a => a.roomId === roomId)
+    .map(publicAgent)
+    .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+}
 function findPresence(room, info, identity) {
   if (identity) return agents.get(verifiedPresenceKey(room.id, identity.id));
   if (info.agentId) {
@@ -271,23 +645,80 @@ function findPresence(room, info, identity) {
   return agents.get(guestPresenceKey(room.id, cleanName(info.name)));
 }
 function touchAgent(room, info, identity = null) {
+  const nextCard = sanitizeCard(info.card);
   let agent = findPresence(room, info, identity);
   const isNew = !agent;
   const wasOnline = agent ? isOnline(agent) : false;
   if (!agent) {
     const name = identity ? identity.name : cleanName(info.name);
-    agent = { id: identity?.id || uid(), verified: !!identity, name, role: identity?.role || 'Agent', color: colorFor(identity?.id || name), status: 'online', roomId: room.id, joinedAt: now(), lastSeen: now(), sockets: 0 };
+    const savedCard = identity && Object.hasOwn(store.agentCards, identity.id) ? store.agentCards[identity.id] : undefined;
+    agent = {
+      id: identity?.id || uid(),
+      verified: !!identity,
+      name,
+      role: identity?.role || 'Agent',
+      color: colorFor(identity?.id || name),
+      status: 'online',
+      roomId: room.id,
+      joinedAt: now(),
+      lastSeen: now(),
+      sockets: 0,
+      ...(savedCard ? { card: savedCard } : {}),
+    };
     agents.set(presenceKey(agent), agent);
   }
   if (!identity && info.role) agent.role = String(info.role).slice(0, 30);
   if (!identity && info.color) agent.color = String(info.color).slice(0, 20);
   if (info.status) agent.status = String(info.status).slice(0, 60);
+  let cardChanged = false;
+  if (nextCard !== undefined) {
+    const prevJson = JSON.stringify(agent.card || null);
+    const nextJson = JSON.stringify(nextCard);
+    if (prevJson !== nextJson) {
+      if (nextCard === null) delete agent.card;
+      else agent.card = nextCard;
+      cardChanged = true;
+      if (identity) {
+        if (nextCard === null) delete store.agentCards[identity.id];
+        else store.agentCards[identity.id] = nextCard;
+        persistImmediate();
+      }
+    }
+  }
   agent.lastSeen = now();
   if (isNew || !wasOnline) {
     addEvent(room, 'join', `${agent.name} 加入了房间`, agent);
     broadcast(room.id, { type: 'agents', agents: agentsIn(room.id) });
+  } else if (cardChanged) {
+    addEvent(room, 'card', `${agent.name} 更新了项目名片${agent.card?.project ? ` (${agent.card.project})` : ''}`, agent);
+    broadcast(room.id, { type: 'agents', agents: agentsIn(room.id) });
   }
   return agent;
+}
+
+// ---------- 防死循环速率保护 ----------
+const rateBuckets = new Map(); // `${roomId}:${agentId}` -> number[]
+const rateAlertAt = new Map();
+function checkRateLimit(room, agent) {
+  if (!RATE_LIMIT_MAX) return;
+  if (String(agent.role || '').toLowerCase() === 'human') return;
+  const key = `${room.id}:${agent.id}`;
+  const ts = Date.now();
+  const cutoff = ts - RATE_LIMIT_WINDOW_MS;
+  const bucket = (rateBuckets.get(key) || []).filter(t => t > cutoff);
+  if (bucket.length >= RATE_LIMIT_MAX) {
+    const retryAfter = Math.max(1, Math.ceil((bucket[0] + RATE_LIMIT_WINDOW_MS - ts) / 1000));
+    rateBuckets.set(key, bucket);
+    if (ts - (rateAlertAt.get(key) || 0) > RATE_LIMIT_WINDOW_MS) {
+      rateAlertAt.set(key, ts);
+      addEvent(room, 'loop_guard', `${agent.name} 短时间发言过快，触发防死循环限流（${RATE_LIMIT_MAX} 条/${Math.round(RATE_LIMIT_WINDOW_MS / 1000)}s）`, agent);
+    }
+    throw httpError(429, `Rate limit exceeded (anti-loop guard). Retry after ${retryAfter}s.`, {
+      headers: { 'Retry-After': String(retryAfter) },
+    });
+  }
+  bucket.push(ts);
+  rateBuckets.set(key, bucket);
 }
 
 // ---------- 消息 ----------
@@ -298,30 +729,66 @@ function addEvent(room, type, detail, agent) {
   persist();
   broadcast(room.id, { type: 'event', event });
 }
-function postMessage(room, data, getAgent) {
+function isHumanModerator(agent, data) {
+  return data?.overridePause === true || String(agent.role || '').trim().toLowerCase() === 'human';
+}
+function postMessage(room, data, getAgent, options = {}) {
   const text = String(data.text ?? data.content ?? data.message ?? '').slice(0, MAX_TEXT);
   if (!text.trim()) throw httpError(400, 'text is required');
+  let meta;
+  if (data.meta !== undefined && data.meta !== null) {
+    if (typeof data.meta === 'object' && !Array.isArray(data.meta)) {
+      if (JSON.stringify(data.meta).length > MAX_META) throw httpError(400, 'meta payload too large');
+      meta = data.meta;
+    }
+  }
   const agent = getAgent();
+  if (room.paused && !options.ignorePause && !isHumanModerator(agent, data)) {
+    throw httpError(423, room.pausedReason ? `Room is paused: ${room.pausedReason}` : 'Room is paused by human moderator', {
+      payload: {
+        error: room.pausedReason ? `Room is paused: ${room.pausedReason}` : 'Room is paused by human moderator',
+        paused: true,
+        pausedReason: room.pausedReason || '',
+        pausedBy: room.pausedBy || '',
+      },
+    });
+  }
+  if (!options.ignoreRateLimit) checkRateLimit(room, agent);
+  const kind = String(data.kind || 'message').slice(0, 20);
   const mentions = [...new Set([...parseMentions(text), ...toList(data.to)])];
   const message = {
-    id: uid(), seq: ++room.seq, room: room.id,
-    agentId: agent.id, verified: agent.verified, agent: agent.name, role: agent.role,
-    text, kind: String(data.kind || 'message').slice(0, 20), mentions,
+    id: uid(),
+    seq: ++room.seq,
+    room: room.id,
+    agentId: agent.id,
+    verified: agent.verified,
+    agent: agent.name,
+    role: agent.role,
+    text,
+    kind,
+    mentions,
     replyTo: data.replyTo ? Number(data.replyTo) || String(data.replyTo) : undefined,
-    meta: data.meta && typeof data.meta === 'object' ? data.meta : undefined,
-    at: now()
+    meta,
+    ...(kind === 'proposal' ? { proposal: { status: 'pending', decisions: [] } } : {}),
+    at: now(),
   };
   room.messages.push(message);
   if (room.messages.length > MAX_MESSAGES) room.messages = room.messages.slice(-MAX_MESSAGES);
   persist();
   broadcast(room.id, { type: 'message', message });
   if (message.kind === 'debug') addEvent(room, 'trace', `${message.agent}: ${text.slice(0, 80)}`, agent);
+  if (message.kind === 'proposal') addEvent(room, 'proposal', `${message.agent} 发起了变更提案 #${message.seq}`, agent);
   wakeWaiters(room);
   return message;
 }
-function mentionsYou(message, name) {
-  const n = name.toLowerCase();
-  return message.mentions.includes(n) || message.mentions.includes('all') || message.mentions.includes('所有人') || message.mentions.includes('everyone');
+function mentionsYou(message, targetParam) {
+  const targets = String(targetParam || '')
+    .split(',')
+    .map(s => s.trim().replace(/^@/, '').toLowerCase())
+    .filter(Boolean);
+  if (!targets.length) return false;
+  if (message.mentions.includes('all') || message.mentions.includes('所有人') || message.mentions.includes('everyone')) return true;
+  return targets.some(t => message.mentions.includes(t));
 }
 function queryMessages(room, q) {
   let list = room.messages;
@@ -348,12 +815,15 @@ function parseQuery(url) {
     fromId: url.searchParams.get('from_id'),
     kind: url.searchParams.get('kind') || '',
     excludeId: excludeSelf ? url.searchParams.get('self_id') : null,
-    excludeSelf: excludeSelf ? (url.searchParams.get('name') || '').toLowerCase() : ''
+    excludeSelf: excludeSelf ? (url.searchParams.get('name') || '').toLowerCase() : '',
   };
 }
 function messagesAsText(room, list, cursor) {
-  const lines = list.map(m => `[#${m.seq} ${fmtTime(m.at)}] ${m.verified ? `[已验证 ${m.agentId}] ` : ''}${m.agent}${m.role && m.role !== 'Agent' ? `(${m.role})` : ''}${m.kind !== 'message' ? ` <${m.kind}>` : ''}${m.replyTo ? ` ↩#${m.replyTo}` : ''}: ${m.text}`);
-  return `# room=${room.id} cursor=${cursor} count=${list.length}\n${lines.join('\n')}${lines.length ? '\n' : ''}`;
+  const lines = list.map(m => {
+    const proposalTag = m.proposal ? ` [${m.proposal.status}]` : '';
+    return `[#${m.seq} ${fmtTime(m.at)}] ${m.verified ? `[已验证 ${m.agentId}] ` : ''}${m.agent}${m.role && m.role !== 'Agent' ? `(${m.role})` : ''}${m.kind !== 'message' ? ` <${m.kind}>` : ''}${proposalTag}${m.replyTo ? ` ↩#${m.replyTo}` : ''}: ${m.text}`;
+  });
+  return `# room=${room.id} cursor=${cursor} count=${list.length}${room.paused ? ' paused=1' : ''}\n${lines.join('\n')}${lines.length ? '\n' : ''}`;
 }
 
 // ---------- 长轮询 ----------
@@ -378,12 +848,20 @@ function broadcastAll(payload) {
 }
 function state(room, req) {
   return {
-    room: { id: room.id, name: room.name, topic: room.topic, lastSeq: room.seq },
+    room: publicRoom(room),
     rooms: roomList(),
     agents: agentsIn(room.id),
+    artifacts: artifactList(room),
     messages: room.messages.slice(-200),
     events: room.events.slice(0, 40),
-    server: { hosts: localAddresses(), port: PORT, auth: SHARED_TOKEN ? 'shared-token' : 'open', baseUrl: req ? baseUrl(req) : null }
+    server: {
+      version: VERSION,
+      hosts: localAddresses(),
+      port: PORT,
+      auth: SHARED_TOKEN ? 'shared-token' : 'open',
+      baseUrl: req ? baseUrl(req) : null,
+      rateLimit: RATE_LIMIT_MAX,
+    },
   };
 }
 
@@ -391,7 +869,9 @@ function guide(req) {
   const base = baseUrl(req);
   let text = '';
   try { text = fs.readFileSync(GUIDE_FILE, 'utf8'); } catch { text = '# Agent Relay\n'; }
-  return text.replaceAll('<RELAY_BASE_URL>', base).replaceAll('<RELAY_WS_URL>', base.replace(/^http/, 'ws'))
+  return text
+    .replaceAll('<RELAY_BASE_URL>', base)
+    .replaceAll('<RELAY_WS_URL>', base.replace(/^http/, 'ws'))
     .replaceAll('<AUTH_NOTE>', SHARED_TOKEN ? '本服务已启用共享口令：受保护的接口需带 `Authorization: Bearer <口令>` 或 `?token=<口令>`。' : '本服务为开放模式，无需全局共享口令。');
 }
 
@@ -401,9 +881,32 @@ const server = http.createServer(async (req, res) => {
   const p = url.pathname.replace(/\/+$/, '') || '/';
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
   try {
-    // 免鉴权：首页、静态资源、说明文档、健康检查
+    // 免鉴权：首页、静态资源、说明文档、健康检查、服务发现信息
     if (req.method === 'GET' && ['/llms.txt', '/agent.md', '/AGENT.md', '/api', '/api/help'].includes(p)) return send(res, 200, guide(req), 'text/markdown');
-    if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, auth: SHARED_TOKEN ? 'shared-token' : 'open', agentIdentity: 'optional-key', rooms: store.rooms.length, time: now() });
+    if (req.method === 'GET' && p === '/api/health') {
+      return send(res, 200, {
+        ok: true,
+        version: VERSION,
+        auth: SHARED_TOKEN ? 'shared-token' : 'open',
+        agentIdentity: 'optional-key',
+        features: ['cards', 'artifacts', 'artifact-diff', 'proposals', 'pause', 'rate-limit', 'export-zip', 'openapi-diff', 'discovery'],
+        rooms: store.rooms.length,
+        time: now(),
+      });
+    }
+    if (req.method === 'GET' && p === '/api/discovery') {
+      const addr = server.address();
+      return send(res, 200, {
+        serviceType: SERVICE_TYPE,
+        instanceId: INSTANCE_ID,
+        hostname: os.hostname(),
+        version: VERSION,
+        port: addr ? addr.port : PORT,
+        hosts: localAddresses(),
+        auth: SHARED_TOKEN ? 'shared-token' : 'open',
+        discovery: discoveryHandle ? discoveryHandle.status : { enabled: false, serviceType: SERVICE_TYPE },
+      });
+    }
     if (req.method === 'GET' && !p.startsWith('/api/')) return serveStatic(res, p);
 
     if (!authorized(req, url)) return send(res, 401, { error: 'Shared token required', hint: 'Authorization: Bearer <token> 或 ?token=<token>' });
@@ -415,7 +918,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 201, registerIdentity(await readBody(req)));
     }
 
-    // 房间
+    // 房间管理
     if (p === '/api/rooms' && req.method === 'GET') return send(res, 200, { rooms: roomList() });
     if (p === '/api/rooms' && req.method === 'POST') {
       const data = await readBody(req);
@@ -430,6 +933,7 @@ const server = http.createServer(async (req, res) => {
       broadcastAll({ type: 'rooms', rooms: roomList() });
       return send(res, existed ? 200 : 201, { id: room.id, name: room.name, topic: room.topic, existed });
     }
+
     const roomMatch = p.match(/^\/api\/rooms\/([^/]+)$/);
     if (roomMatch && (req.method === 'PATCH' || req.method === 'PUT')) {
       const room = findRoom(decodeURIComponent(roomMatch[1]));
@@ -438,9 +942,26 @@ const server = http.createServer(async (req, res) => {
       requireWritable();
       if (data.name) room.name = String(data.name).slice(0, 60);
       if (data.topic !== undefined) room.topic = String(data.topic).slice(0, 200);
-      persist();
+      if (typeof data.paused === 'boolean' && data.paused !== room.paused) {
+        room.paused = data.paused;
+        room.pausedReason = data.paused ? String(data.pausedReason || '').trim().slice(0, 200) : '';
+        room.pausedBy = data.paused ? cleanName(data.pausedBy || data.name, 'moderator') : '';
+        room.pausedAt = data.paused ? now() : null;
+        addEvent(
+          room,
+          room.paused ? 'pause' : 'resume',
+          room.paused
+            ? `${room.pausedBy} 暂停了 Agent 发言${room.pausedReason ? `：${room.pausedReason}` : ''}`
+            : `${cleanName(data.pausedBy || data.name, 'moderator')} 恢复了房间对话`,
+          { name: room.pausedBy || cleanName(data.name, 'moderator'), id: 'moderator', verified: false },
+        );
+      } else if (room.paused && data.pausedReason !== undefined) {
+        room.pausedReason = String(data.pausedReason).trim().slice(0, 200);
+      }
+      persistImmediate();
+      broadcast(room.id, { type: 'room', room: publicRoom(room) });
       broadcastAll({ type: 'rooms', rooms: roomList() });
-      return send(res, 200, { id: room.id, name: room.name, topic: room.topic });
+      return send(res, 200, publicRoom(room));
     }
     if (roomMatch && req.method === 'DELETE') {
       const id = decodeURIComponent(roomMatch[1]);
@@ -455,31 +976,285 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: store.rooms.length !== before });
     }
 
+    // 房间导出（联调纪要 SYNC_REPORT.md + 最终契约包 .zip / JSON）
+    const roomExportMatch = p.match(/^\/api\/rooms\/([^/]+)\/export$/);
+    if (roomExportMatch && req.method === 'GET') {
+      const room = requireExistingRoom(decodeURIComponent(roomExportMatch[1]), false);
+      const format = (url.searchParams.get('format') || 'zip').toLowerCase();
+      const includeDebug = url.searchParams.get('include_debug') === '1' || url.searchParams.get('includeDebug') === 'true';
+      const members = agentsIn(room.id);
+      if (format === 'md' || format === 'markdown') {
+        const md = buildSyncReportMarkdown(room, members, { includeDebug });
+        return send(res, 200, md, 'text/markdown', {
+          'Content-Disposition': `attachment; filename="${room.id}-sync-report.md"`,
+        });
+      }
+      const bundle = buildRoomExportZip(room, members, { includeDebug });
+      if (format === 'json') {
+        return send(res, 200, bundle.transcript);
+      }
+      if (format === 'zip') {
+        return sendBinary(res, 200, bundle.zip, 'application/zip', {
+          'Content-Disposition': `attachment; filename="${bundle.filename}"`,
+        });
+      }
+      return send(res, 400, { error: 'Unsupported export format; use zip, md, or json' });
+    }
+
+    // Swagger / OpenAPI Schema 差异自动比对助手
+    const openApiRoomMatch = p.match(/^\/api\/rooms\/([^/]+)\/openapi\/diff$/);
+    if ((p === '/api/openapi/diff' || openApiRoomMatch) && req.method === 'POST') {
+      const data = await readBody(req);
+      const targetRoomRaw = openApiRoomMatch ? decodeURIComponent(openApiRoomMatch[1]) : (data.room || url.searchParams.get('room') || '');
+      const needsWrite = Boolean(data.saveArtifact || data.postAsProposal);
+      const writer = needsWrite ? httpWriter(req, url, data, false, data) : null;
+      if (writer) requireWritable();
+      const room = targetRoomRaw ? requireExistingRoom(targetRoomRaw, false) : null;
+      if (needsWrite && !room) throw httpError(400, '保存契约或发提案时必须指定房间');
+
+      const baseResolved = await resolveOpenApiSource(data.base, room, data.baseLabel || 'base');
+      const targetResolved = await resolveOpenApiSource(data.target, room, data.targetLabel || 'target');
+      let report;
+      try {
+        report = diffOpenApi(baseResolved.spec, targetResolved.spec, {
+          baseLabel: data.baseLabel || baseResolved.label,
+          targetLabel: data.targetLabel || targetResolved.label,
+        });
+      } catch (error) {
+        throw httpError(400, error.message);
+      }
+
+      let savedArtifact = null;
+      let proposalMessage = null;
+      if (needsWrite) {
+        const agent = touchAgent(room, writer.info, writer.identity);
+        if (data.saveArtifact) {
+          const artName = cleanArtifactName(typeof data.saveArtifact === 'string' ? data.saveArtifact : 'openapi-diff.md');
+          const { artifact } = saveArtifact(room, artName, {
+            content: report.markdown,
+            title: `OpenAPI 差异比对 (${report.base.label} → ${report.target.label})`,
+            summary: `破坏性:${report.summary.breakingCount} / 兼容:${report.summary.nonBreakingCount}`,
+            contentType: 'text/markdown',
+          }, agent);
+          savedArtifact = publicArtifact(artifact);
+        }
+        if (data.postAsProposal) {
+          const mentionTo = data.to;
+          const intro = `🔍 OpenAPI Schema 自动比对完成（\`${report.base.label}\` → \`${report.target.label}\`）：破坏性变更 **${report.summary.breakingCount}** 项，兼容变更 **${report.summary.nonBreakingCount}** 项。\n\n`;
+          proposalMessage = postMessage(room, {
+            text: `${intro}${report.markdown}`.slice(0, MAX_TEXT),
+            kind: 'proposal',
+            to: mentionTo,
+            meta: { openapiDiff: report.summary },
+          }, () => agent);
+        }
+      }
+      return send(res, 200, { ...report, savedArtifact, proposalMessage });
+    }
+
+    // 房间共享契约 / 产物（Artifacts）
+    const artifactsListMatch = p.match(/^\/api\/rooms\/([^/]+)\/artifacts$/);
+    if (artifactsListMatch && req.method === 'GET') {
+      const room = requireExistingRoom(decodeURIComponent(artifactsListMatch[1]), false);
+      return send(res, 200, { room: room.id, artifacts: artifactList(room) });
+    }
+    const artifactDiffMatch = p.match(/^\/api\/rooms\/([^/]+)\/artifacts\/([^/]+)\/diff$/);
+    if (artifactDiffMatch && req.method === 'GET') {
+      const room = requireExistingRoom(decodeURIComponent(artifactDiffMatch[1]), false);
+      const name = cleanArtifactName(decodeURIComponent(artifactDiffMatch[2]));
+      const artifact = Object.hasOwn(room.artifacts, name) ? room.artifacts[name] : null;
+      if (!artifact) return send(res, 404, { error: 'Artifact not found', room: room.id, name });
+      const revs = artifactRevisions(artifact);
+      const versions = revs.map(r => r.version);
+      const toVer = url.searchParams.get('to') ? Number(url.searchParams.get('to')) : versions.at(-1);
+      const defaultFrom = versions.length >= 2 ? versions.at(-2) : versions[0];
+      const fromVer = url.searchParams.get('from') ? Number(url.searchParams.get('from')) : defaultFrom;
+      const fromRev = revs.find(r => r.version === fromVer);
+      const toRev = revs.find(r => r.version === toVer);
+      if (!fromRev || !toRev) {
+        return send(res, 404, { error: `Requested version not available (available: ${versions.map(v => `v${v}`).join(', ')})`, availableVersions: versions });
+      }
+      const diff = diffText(fromRev.content, toRev.content, { fromLabel: `${name}@v${fromVer}`, toLabel: `${name}@v${toVer}` });
+      if (url.searchParams.get('format') === 'text') {
+        return send(res, 200, diff.unified || `# ${name} v${fromVer} -> v${toVer} (无变更)\n`, 'text/plain');
+      }
+      const { content: _fc, ...fromMeta } = fromRev;
+      const { content: _tc, ...toMeta } = toRev;
+      return send(res, 200, {
+        room: room.id,
+        name,
+        fromVersion: fromVer,
+        toVersion: toVer,
+        fromMeta,
+        toMeta,
+        availableVersions: versions,
+        ...diff,
+      });
+    }
+    const artifactVersionMatch = p.match(/^\/api\/rooms\/([^/]+)\/artifacts\/([^/]+)\/versions\/(\d+)$/);
+    if (artifactVersionMatch && req.method === 'GET') {
+      const room = requireExistingRoom(decodeURIComponent(artifactVersionMatch[1]), false);
+      const name = cleanArtifactName(decodeURIComponent(artifactVersionMatch[2]));
+      const ver = Number(artifactVersionMatch[3]);
+      const artifact = Object.hasOwn(room.artifacts, name) ? room.artifacts[name] : null;
+      if (!artifact) return send(res, 404, { error: 'Artifact not found', room: room.id, name });
+      const rev = artifactRevisions(artifact).find(r => r.version === ver);
+      if (!rev) return send(res, 404, { error: `Version v${ver} not found`, availableVersions: artifactRevisions(artifact).map(r => r.version) });
+      if (url.searchParams.get('format') === 'raw') return send(res, 200, rev.content, 'text/plain');
+      return send(res, 200, { room: room.id, name, revision: rev });
+    }
+    const artifactItemMatch = p.match(/^\/api\/rooms\/([^/]+)\/artifacts\/([^/]+)$/);
+    if (artifactItemMatch) {
+      const targetRoomId = decodeURIComponent(artifactItemMatch[1]);
+      const name = cleanArtifactName(decodeURIComponent(artifactItemMatch[2]));
+      if (req.method === 'GET') {
+        const room = requireExistingRoom(targetRoomId, false);
+        const artifact = Object.hasOwn(room.artifacts, name) ? room.artifacts[name] : null;
+        if (!artifact) return send(res, 404, { error: 'Artifact not found', room: room.id, name });
+        if (url.searchParams.get('format') === 'raw') return send(res, 200, artifact.content, 'text/plain');
+        return send(res, 200, { room: room.id, artifact: publicArtifact(artifact) });
+      }
+      if (req.method === 'PUT' || req.method === 'POST') {
+        const data = await readBody(req);
+        const writer = httpWriter(req, url, data, false, data);
+        requireWritable();
+        const room = requireExistingRoom(targetRoomId, Boolean(data.createRoom));
+        const { artifact, existed } = saveArtifact(room, name, data, () => touchAgent(room, writer.info, writer.identity));
+        return send(res, existed ? 200 : 201, { room: room.id, artifact: publicArtifact(artifact) });
+      }
+      if (req.method === 'DELETE') {
+        const data = await readBody(req);
+        const writer = httpWriter(req, url, data, false, data);
+        requireWritable();
+        const room = requireExistingRoom(targetRoomId, false);
+        if (!Object.hasOwn(room.artifacts, name)) return send(res, 404, { error: 'Artifact not found', room: room.id, name });
+        const agent = touchAgent(room, writer.info, writer.identity);
+        delete room.artifacts[name];
+        persistImmediate();
+        addEvent(room, 'artifact', `${agent.name} 删除了契约 ${name}`, agent);
+        broadcast(room.id, { type: 'artifacts', artifacts: artifactList(room) });
+        broadcastAll({ type: 'rooms', rooms: roomList() });
+        return send(res, 200, { ok: true, room: room.id, name });
+      }
+    }
+
+    // 变更提案审批门禁
+    const proposalDecisionMatch = p.match(/^\/api\/rooms\/([^/]+)\/proposals\/(\d+)\/decision$/);
+    if (proposalDecisionMatch && req.method === 'POST') {
+      const targetRoomId = decodeURIComponent(proposalDecisionMatch[1]);
+      const seq = Number(proposalDecisionMatch[2]);
+      const data = await readBody(req);
+      const writer = httpWriter(req, url, data, false, data);
+      requireWritable();
+      const room = requireExistingRoom(targetRoomId, false);
+      const target = room.messages.find(m => m.seq === seq);
+      if (!target) return send(res, 404, { error: `Message #${seq} not found` });
+      if (target.kind !== 'proposal' && !target.proposal) {
+        return send(res, 400, { error: `Message #${seq} is not a proposal` });
+      }
+      const decision = String(data.decision || '').trim().toLowerCase();
+      if (!['approved', 'rejected', 'changes_requested'].includes(decision)) {
+        return send(res, 400, { error: 'decision must be one of: approved, rejected, changes_requested' });
+      }
+      const comment = String(data.comment || '').trim().slice(0, 2000);
+      const actor = touchAgent(room, writer.info, writer.identity);
+      if (!target.proposal) target.proposal = { status: 'pending', decisions: [] };
+      const entry = {
+        by: actor.name,
+        byId: actor.id,
+        verified: actor.verified,
+        role: actor.role,
+        decision,
+        comment,
+        at: now(),
+      };
+      target.proposal.status = decision;
+      target.proposal.decisions = [...(target.proposal.decisions || []), entry].slice(-50);
+      persistImmediate();
+      const labels = { approved: '已通过', rejected: '已驳回', changes_requested: '需修改' };
+      addEvent(room, 'proposal', `${actor.name} 对提案 #${seq} 做出决定：${labels[decision]}${comment ? `（${comment.slice(0, 60)}）` : ''}`, actor);
+      broadcast(room.id, { type: 'message_updated', message: target });
+      let replyMessage = null;
+      if (data.announce !== false) {
+        const mentionTarget = target.verified ? target.agentId : target.agent;
+        replyMessage = postMessage(
+          room,
+          {
+            text: `提案 #${seq} 审批结果：**${labels[decision]}**${comment ? `\n${comment}` : ''}`,
+            kind: 'decision',
+            replyTo: seq,
+            to: [mentionTarget],
+            meta: { proposalSeq: seq, decision },
+            overridePause: true,
+          },
+          () => actor,
+          { ignorePause: true, ignoreRateLimit: true },
+        );
+      }
+      return send(res, 200, { ok: true, message: target, replyMessage });
+    }
+
     const needsBody = req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
     const data = needsBody ? await readBody(req) : {};
     const q = (key) => url.searchParams.get(key);
     const isMessage = (['/api/messages', '/api/message', '/api/send'].includes(p) && req.method === 'POST') || (p === '/api/send' && req.method === 'GET');
-    const isPresence = ['/api/join', '/api/heartbeat', '/api/leave'].includes(p) && req.method === 'POST';
+    const isPresence = (['/api/join', '/api/heartbeat', '/api/leave', '/api/card'].includes(p) && req.method === 'POST')
+      || (p === '/api/agents/card' && (req.method === 'PUT' || req.method === 'POST'));
     const input = isMessage ? { ...Object.fromEntries(url.searchParams), ...data } : data;
     const writer = isMessage || isPresence ? httpWriter(req, url, data, isMessage, input) : null;
     if (writer) requireWritable();
-    const room = getRoom(q('room') || data.room || 'general');
+
+    const rawRoom = q('room') || data.room || 'general';
+    const allowCreateOnRead = q('create') === '1' || q('create') === 'true';
 
     if (p === '/api/state' && req.method === 'GET') {
+      const room = requireExistingRoom(rawRoom, allowCreateOnRead);
       if (q('name') && !persistRetryMs) touchAgent(room, { name: q('name') });
       return send(res, 200, state(room, req));
     }
-    if (p === '/api/agents' && req.method === 'GET') return send(res, 200, { room: room.id, agents: agentsIn(room.id) });
+    if (p === '/api/agents' && req.method === 'GET') {
+      const room = requireExistingRoom(rawRoom, allowCreateOnRead);
+      return send(res, 200, { room: room.id, agents: agentsIn(room.id) });
+    }
 
     if (p === '/api/join' && req.method === 'POST') {
+      const room = getRoom(rawRoom, true);
       const agent = touchAgent(room, writer.info, writer.identity);
-      return send(res, 200, { ...publicAgent(agent), room: room.id, cursor: room.seq, recent: room.messages.slice(-20), agents: agentsIn(room.id), guide: `${baseUrl(req)}/llms.txt` });
+      return send(res, 200, {
+        ...publicAgent(agent),
+        room: room.id,
+        paused: Boolean(room.paused),
+        cursor: room.seq,
+        recent: room.messages.slice(-20),
+        agents: agentsIn(room.id),
+        artifacts: artifactList(room),
+        guide: `${baseUrl(req)}/llms.txt`,
+      });
     }
     if (p === '/api/heartbeat' && req.method === 'POST') {
+      const room = getRoom(rawRoom, true);
       const agent = touchAgent(room, writer.info, writer.identity);
-      return send(res, 200, { ok: true, agent: publicAgent(agent), lastSeq: room.seq });
+      return send(res, 200, { ok: true, agent: publicAgent(agent), lastSeq: room.seq, paused: Boolean(room.paused) });
+    }
+    if ((p === '/api/agents/card' && (req.method === 'PUT' || req.method === 'POST')) || (p === '/api/card' && req.method === 'POST')) {
+      const room = getRoom(rawRoom, true);
+      const cardInput = Object.hasOwn(data, 'card') ? data.card : {
+        project: data.project,
+        owner: data.owner,
+        stack: data.stack,
+        repo: data.repo,
+        branch: data.branch,
+        localEndpoint: data.localEndpoint,
+        apiDoc: data.apiDoc,
+        summary: data.summary,
+        capabilities: data.capabilities,
+      };
+      const agent = touchAgent(room, { ...writer.info, card: cardInput }, writer.identity);
+      return send(res, 200, { ok: true, agent: publicAgent(agent) });
     }
     if (p === '/api/leave' && req.method === 'POST') {
+      const room = getRoom(rawRoom, false);
+      if (!room) return send(res, 200, { ok: false });
       const agent = findPresence(room, writer.info, writer.identity);
       if (agent) {
         if (agent.verified) closeRoomSockets(room.id, 'Agent left', agent);
@@ -492,17 +1267,19 @@ const server = http.createServer(async (req, res) => {
 
     // 发送消息：POST /api/messages | /api/message | /api/send，或 GET /api/send?text=...（只能发 GET 的 Agent 也能用）
     if (isMessage) {
+      const room = getRoom(rawRoom, true);
       const message = postMessage(room, input, () => touchAgent(room, writer.info, writer.identity));
       return q('format') === 'text' ? send(res, 201, `ok #${message.seq}\n`, 'text/plain') : send(res, 201, message);
     }
 
     // 读取消息（支持长轮询 wait=秒）
     if (p === '/api/messages' && req.method === 'GET') {
+      const room = requireExistingRoom(rawRoom, allowCreateOnRead);
       const query = parseQuery(url);
       if (q('name') && !persistRetryMs) touchAgent(room, { name: q('name') });
       const reply = ({ list, cursor }) => q('format') === 'text'
         ? send(res, 200, messagesAsText(room, list, cursor), 'text/plain')
-        : send(res, 200, { room: room.id, cursor, count: list.length, messages: list });
+        : send(res, 200, { room: room.id, paused: Boolean(room.paused), cursor, count: list.length, messages: list });
       const first = queryMessages(room, query);
       const wait = Math.min(Number(q('wait')) || 0, MAX_WAIT_SECONDS);
       if (first.list.length || !wait || query.since === null) return reply(first);
@@ -515,7 +1292,8 @@ const server = http.createServer(async (req, res) => {
 
     send(res, 404, { error: 'Not found', help: `${baseUrl(req)}/llms.txt` });
   } catch (error) {
-    send(res, error.status || 500, { error: error.status ? error.message : 'Internal server error' });
+    const body = error.payload || { error: error.status ? error.message : 'Internal server error' };
+    send(res, error.status || 500, body, 'application/json', error.headers || {});
   }
 });
 
@@ -530,7 +1308,7 @@ function serveStatic(res, p) {
 }
 
 // ---------- WebSocket ----------
-const wss = new WebSocket.Server({ noServer: true });
+const wss = new WebSocket.Server({ noServer: true, maxPayload: MAX_BODY });
 function closeRoomSockets(roomId, reason, agent) {
   for (const ws of sockets.get(roomId) || []) if (!agent || ws.agent === agent) ws.close(1008, reason);
   if (!agent) sockets.delete(roomId);
@@ -590,6 +1368,11 @@ server.on('upgrade', (req, socket, head) => {
           const a = bind(data, proof);
           identity = proof;
           ws.send(JSON.stringify({ type: 'joined', agent: publicAgent(a), cursor: room.seq }));
+        } else if (data.type === 'card') {
+          const proof = requireBoundIdentity(data);
+          requireWritable();
+          const a = bind({ ...data, name: data.name || agent?.name }, proof);
+          ws.send(JSON.stringify({ type: 'card_updated', agent: publicAgent(a) }));
         } else if (data.type === 'heartbeat' || data.type === 'ping') {
           const proof = requireBoundIdentity(data);
           if (agent || data.name || data.agentId) {
@@ -621,16 +1404,24 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-// 定期刷新在线状态
+// 定期刷新在线状态 & 清理过期限流桶
 const lastOnline = new Map();
 setInterval(() => {
   for (const room of store.rooms) {
     const sig = agentsIn(room.id).filter(a => a.online).map(a => a.id).join(',');
     if (lastOnline.get(room.id) !== sig) { lastOnline.set(room.id, sig); broadcast(room.id, { type: 'agents', agents: agentsIn(room.id) }); }
   }
+  const cutoff = Date.now() - RATE_LIMIT_WINDOW_MS;
+  for (const [key, bucket] of rateBuckets) {
+    const fresh = bucket.filter(t => t > cutoff);
+    if (fresh.length) rateBuckets.set(key, fresh);
+    else rateBuckets.delete(key);
+  }
 }, 15000).unref();
 
+let discoveryHandle = null;
 function shutdown() {
+  if (discoveryHandle) discoveryHandle.close();
   try { if (persistTimer) persistNow(); }
   catch {
     console.error('关闭时未能写入群聊数据，磁盘上的上一次快照仍保留');
@@ -642,9 +1433,27 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
 server.listen(PORT, HOST, () => {
-  process.send?.({ type: 'ready', port: server.address().port });
-  console.log('Agent Relay 群聊平台已启动');
-  for (const host of localAddresses()) console.log(`  浏览器/Agent 地址: http://${host}:${PORT}`);
-  console.log(`  Agent 接入说明:   http://${localAddresses()[0]}:${PORT}/llms.txt`);
+  const actualPort = server.address().port;
+  const discoveryFlag = process.env.AGENT_RELAY_DISCOVERY;
+  const shouldDiscover = discoveryFlag === '1' || (discoveryFlag !== '0' && process.env.PORT !== '0');
+  if (shouldDiscover) {
+    discoveryHandle = startDiscoveryResponder(() => ({
+      instanceId: INSTANCE_ID,
+      hostname: os.hostname(),
+      version: VERSION,
+      auth: SHARED_TOKEN ? 'shared-token' : 'open',
+      rooms: store.rooms.length,
+      port: actualPort,
+      hosts: localAddresses(),
+    }), {
+      mdns: process.env.AGENT_RELAY_MDNS !== '0',
+    });
+  }
+  process.send?.({ type: 'ready', port: actualPort });
+  console.log(`Agent Relay v${VERSION} 局域网 Agent 协作平台已启动`);
+  for (const host of localAddresses()) console.log(`  浏览器/Agent 地址: http://${host}:${actualPort}`);
+  console.log(`  Agent 接入说明:   http://${localAddresses()[0]}:${actualPort}/llms.txt`);
+  console.log(`  MCP Server 入口:  node ${path.join(ROOT, 'mcp-server.js')}`);
+  if (discoveryHandle) console.log(`  局域网自动发现:   已启用 (${SERVICE_TYPE} + UDP :${discoveryHandle.status.beaconPort})`);
   console.log(SHARED_TOKEN ? '  鉴权模式: 共享口令 (AGENT_RELAY_TOKEN)' : '  鉴权模式: 开放（无需 Token）');
 });
